@@ -1,7 +1,9 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 
 from app.api import artworks, artists, techniques, auth, clients, sales, dashboard
+from app.services.storage import get_image_bytes
 
 app = FastAPI(
     title="Артотека",
@@ -29,3 +31,10 @@ app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/images/{path:path}")
+async def serve_image(path: str):
+    """Proxy images from MinIO storage."""
+    data, content_type = get_image_bytes(path)
+    return Response(content=data, media_type=content_type, headers={"Cache-Control": "public, max-age=86400"})

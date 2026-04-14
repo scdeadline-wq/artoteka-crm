@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { Plus, Search } from "lucide-react";
 import api from "@/lib/api";
+import { imageUrl } from "@/lib/image";
 import type { ArtworkListItem } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 
@@ -81,7 +82,7 @@ export default function ArtworksPage() {
               <div className="aspect-[4/3] bg-gray-100">
                 {aw.primary_image ? (
                   <img
-                    src={aw.primary_image}
+                    src={imageUrl(aw.primary_image)}
                     alt={aw.title || ""}
                     className="h-full w-full object-cover"
                   />

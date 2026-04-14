@@ -1,4 +1,5 @@
 import uuid
+from io import BytesIO
 
 import boto3
 from fastapi import UploadFile
@@ -27,4 +28,12 @@ async def upload_image(file: UploadFile, artwork_id: int) -> str:
         Body=content,
         ContentType=file.content_type or "image/jpeg",
     )
-    return f"{settings.s3_endpoint}/{settings.s3_bucket}/{key}"
+    # Return relative path — served via /images/ proxy endpoint
+    return f"/images/{key}"
+
+
+def get_image_bytes(key: str) -> tuple[bytes, str]:
+    """Download image from S3 by key. Returns (bytes, content_type)."""
+    client = _get_s3_client()
+    response = client.get_object(Bucket=settings.s3_bucket, Key=key)
+    return response["Body"].read(), response.get("ContentType", "image/jpeg")

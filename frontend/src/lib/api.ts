@@ -11,6 +11,10 @@ api.interceptors.request.use((config) => {
       config.headers.Authorization = `Bearer ${token}`;
     }
   }
+  // Ensure trailing slash to avoid 307 redirects from FastAPI
+  if (config.url && !config.url.includes("?") && !config.url.endsWith("/")) {
+    config.url += "/";
+  }
   return config;
 });
 

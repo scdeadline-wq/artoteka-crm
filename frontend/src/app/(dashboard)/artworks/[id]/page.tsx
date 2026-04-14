@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
+import { imageUrl } from "@/lib/image";
 import type { Artwork } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 
@@ -53,7 +54,7 @@ export default function ArtworkDetailPage({
             {artwork.images.map((img) => (
               <img
                 key={img.id}
-                src={img.url}
+                src={imageUrl(img.url)}
                 alt=""
                 className="h-48 rounded-lg object-cover"
               />
