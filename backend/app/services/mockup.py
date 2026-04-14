@@ -1,4 +1,8 @@
-"""Генерация фотореалистичных мокапов через AI image generation (OpenRouter)."""
+"""Генерация фотореалистичных мокапов через OpenRouter image generation.
+
+Используем GPT-5-image или Gemini через OpenRouter с параметром modalities: ["image", "text"].
+Отправляем фото картины + промпт с описанием интерьера.
+"""
 import base64
 from io import BytesIO
 
@@ -8,25 +12,25 @@ from PIL import Image
 from app.config import settings
 
 ROOM_PROMPTS = {
-    "office": "Photorealistic interior photograph of a luxurious dark wood home office. Dark grey-brown painted walls, mahogany bookshelves on both sides filled with leather-bound books, silver decorative objects, and small framed photos. Large dark wood executive desk with a leather chair, desk lamp, leather accessories. The framed artwork shown in the reference image is hanging centered on the wall above the desk, with a gold-trimmed dark wood frame and white mat. Warm amber ambient lighting, soft shadows. Shot with Canon EOS R5, 35mm lens, f/2.8. Ultra realistic, 4K quality architectural photography.",
-    "living": "Photorealistic interior photograph of a modern Scandinavian living room. Light warm grey walls, large comfortable beige linen sofa centered below the wall. Light oak hardwood floor, round marble coffee table, green monstera plant in a ceramic pot. The framed artwork shown in the reference image is hanging centered on the wall above the sofa, with a slim black frame and white mat. Soft natural daylight from large windows on the left. Shot with Sony A7IV, 28mm lens. Ultra realistic, 4K interior design photography.",
-    "bedroom": "Photorealistic interior photograph of an elegant modern bedroom. Soft sage green walls, luxurious upholstered headboard in cream linen fabric, white cotton bedding with textured throw pillows. Oak bedside tables with ceramic table lamps. The framed artwork shown in the reference image is hanging centered on the wall above the headboard, with a light oak frame and linen mat. Warm cozy evening lighting, soft shadows. Shot with Nikon Z7, 35mm lens. Ultra realistic, 4K quality.",
-    "gallery": "Photorealistic interior photograph of a contemporary art gallery space. Clean white walls, polished light concrete floor, professional track lighting on the ceiling casting focused light on the wall. Minimal oak bench in the foreground. The framed artwork shown in the reference image is hanging centered on the main wall, with a minimal black frame. Museum-quality directional lighting creating subtle shadows. Shot with Hasselblad X2D, 45mm lens. Ultra realistic, 4K architectural photography.",
+    "office": "Create a photorealistic interior mockup: a luxurious dark wood home office. Dark grey-brown painted walls, mahogany bookshelves on both sides filled with leather-bound books and silver decorative objects. Large dark wood executive desk with a leather chair in the foreground, a desk lamp. The attached artwork is shown hanging on the wall above the desk, professionally framed in a dark wood frame with gold trim and white mat. Warm amber lighting, soft shadows. Ultra realistic architectural photography, Canon EOS R5, 35mm f/2.8.",
+    "living": "Create a photorealistic interior mockup: a modern Scandinavian living room. Light warm grey walls, a large comfortable beige linen sofa centered in front. Light oak hardwood floor, round marble coffee table, green monstera plant. The attached artwork is shown hanging on the wall above the sofa, in a slim black frame with white mat. Soft natural daylight from the left. Ultra realistic interior design photography.",
+    "bedroom": "Create a photorealistic interior mockup: an elegant modern bedroom. Soft sage green walls, luxurious upholstered headboard in cream linen, white cotton bedding with textured throw pillows. Oak bedside tables with ceramic lamps. The attached artwork is shown hanging above the headboard, in a light oak frame with linen mat. Warm cozy evening lighting. Ultra realistic photography.",
+    "gallery": "Create a photorealistic interior mockup: a contemporary art gallery. Clean white walls, polished light concrete floor, professional track lighting casting focused light. Minimal oak bench in the foreground. The attached artwork is shown hanging centered on the main wall in a minimal black frame. Museum-quality directional lighting. Ultra realistic architectural photography.",
 }
 
 
 async def generate_mockup(artwork_bytes: bytes, style: str = "office") -> bytes:
-    """Генерирует фотореалистичный мокап через AI image generation."""
+    """Генерирует фотореалистичный мокап через AI."""
 
     prompt = ROOM_PROMPTS.get(style, ROOM_PROMPTS["living"])
 
-    # Кодируем картину в base64
+    # Кодируем картину
     artwork_b64 = base64.b64encode(artwork_bytes).decode("utf-8")
-
-    # Определяем формат
     img = Image.open(BytesIO(artwork_bytes))
-    fmt = img.format or "JPEG"
-    mime = f"image/{fmt.lower()}"
+    fmt = (img.format or "JPEG").lower()
+    if fmt == "jpg":
+        fmt = "jpeg"
+    mime = f"image/{fmt}"
 
     async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(
@@ -37,6 +41,7 @@ async def generate_mockup(artwork_bytes: bytes, style: str = "office") -> bytes:
             },
             json={
                 "model": settings.mockup_model,
+                "modalities": ["image", "text"],
                 "messages": [
                     {
                         "role": "user",
@@ -49,7 +54,7 @@ async def generate_mockup(artwork_bytes: bytes, style: str = "office") -> bytes:
                             },
                             {
                                 "type": "text",
-                                "text": f"Generate a photorealistic interior mockup image showing this exact artwork framed and hanging on the wall. {prompt}",
+                                "text": prompt,
                             },
                         ],
                     },
@@ -59,32 +64,30 @@ async def generate_mockup(artwork_bytes: bytes, style: str = "office") -> bytes:
         response.raise_for_status()
         data = response.json()
 
-    # Ищем сгенерированное изображение в ответе
+    # Извлекаем изображение из ответа
     choice = data["choices"][0]["message"]
 
-    # Некоторые модели возвращают изображение в content как multimodal
-    if isinstance(choice.get("content"), list):
-        for part in choice["content"]:
+    # Формат OpenRouter: images в отдельном массиве
+    images = choice.get("images") or []
+    for img_part in images:
+        if img_part.get("type") == "image_url":
+            url = img_part["image_url"]["url"]
+            if url.startswith("data:"):
+                b64_data = url.split(",", 1)[1]
+                return base64.b64decode(b64_data)
+            else:
+                async with httpx.AsyncClient() as dl:
+                    resp = await dl.get(url)
+                    return resp.content
+
+    # Fallback: ищем в content (некоторые модели кладут туда)
+    content = choice.get("content")
+    if isinstance(content, list):
+        for part in content:
             if part.get("type") == "image_url":
                 url = part["image_url"]["url"]
                 if url.startswith("data:"):
-                    # base64 inline
                     b64_data = url.split(",", 1)[1]
                     return base64.b64decode(b64_data)
-                else:
-                    # URL
-                    async with httpx.AsyncClient() as dl:
-                        img_resp = await dl.get(url)
-                        return img_resp.content
 
-    # Fallback: если модель вернула URL в тексте
-    content = choice.get("content", "")
-    if isinstance(content, str) and "http" in content:
-        import re
-        urls = re.findall(r'https?://[^\s\)"\']+\.(?:png|jpg|jpeg|webp)', content)
-        if urls:
-            async with httpx.AsyncClient() as dl:
-                img_resp = await dl.get(urls[0])
-                return img_resp.content
-
-    raise Exception(f"No image in AI response. Content: {str(content)[:200]}")
+    raise Exception(f"No image in AI response. Keys: {list(choice.keys())}, images: {len(images)}")

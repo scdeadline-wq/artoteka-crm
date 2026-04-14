@@ -101,6 +101,40 @@ docker compose -f docker-compose.vps.yml logs -f postgres   # логи БД
 3. Обновить `PUBLIC_API_URL` в `.env` на `https://api.artoteka.ru`
 4. Пересобрать frontend
 
+## OpenRouter API — справка
+
+### Image Generation (мокапы)
+Используем стандартный chat completions endpoint с обязательным параметром `modalities`:
+
+```bash
+curl https://openrouter.ai/api/v1/chat/completions \
+  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "openai/gpt-5-image",
+    "modalities": ["image", "text"],   # <-- ОБЯЗАТЕЛЬНО для генерации изображений
+    "messages": [{"role": "user", "content": "Generate..."}]
+  }'
+```
+
+Ответ: `choices[0].message.images[0].image_url.url` — base64 data URI.
+
+### Модели генерации изображений (по стоимости)
+| Модель | Цена | Качество |
+|--------|------|----------|
+| `google/gemini-2.5-flash-image` | ~бесплатно | хорошее |
+| `openai/gpt-5-image-mini` | ~$0.003 | хорошее |
+| `openai/gpt-5-image` | ~$0.01 | топ |
+| `black-forest-labs/flux.2-pro` | ~$0.03 | топ |
+
+### Vision/анализ (карточки произведений)
+Модель: `google/gemini-2.0-flash-001` — дешёвый, быстрый, хорошо определяет технику/стиль.
+
+### Доступные модели с image output
+```bash
+curl "https://openrouter.ai/api/v1/models?output_modalities=image"
+```
+
 ## Рекомендации по апгрейду
 
 - **При 1000+ произведений с фото:** апгрейд до 4 GB RAM, вынести фото в Object Storage
