@@ -8,6 +8,7 @@ from app.auth import get_current_user
 from app.models import Artwork, ArtworkStatus, Artist, Technique, Image, User
 from app.schemas.artwork import ArtworkCreate, ArtworkUpdate, ArtworkOut, ArtworkListOut
 from app.services.storage import upload_image
+from app.services.ai import analyze_artwork_image
 
 router = APIRouter()
 
@@ -157,6 +158,65 @@ async def update_artwork(
     await db.commit()
     await db.refresh(artwork)
     return artwork
+
+
+@router.post("/analyze-image")
+async def analyze_image(
+    file: UploadFile = File(...),
+    _: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """AI-анализ фото: возвращает предзаполненные поля для карточки."""
+    image_bytes = await file.read()
+    ai_result = await analyze_artwork_image(image_bytes, file.content_type)
+
+    if "error" in ai_result:
+        raise HTTPException(status_code=500, detail=ai_result["error"])
+
+    # Сматчим техники из AI с нашим справочником
+    technique_names = ai_result.get("techniques") or []
+    matched_techniques = []
+    if technique_names:
+        result = await db.execute(select(Technique).where(Technique.name.in_(technique_names)))
+        matched_techniques = [{"id": t.id, "name": t.name} for t in result.scalars().all()]
+
+    # Сматчим художника если AI его узнал
+    artist_match = None
+    artist_name = ai_result.get("artist_name")
+    if artist_name:
+        result = await db.execute(
+            select(Artist).where(
+                Artist.name_ru.ilike(f"%{artist_name}%")
+                | Artist.name_en.ilike(f"%{artist_name}%")
+            )
+        )
+        found = result.scalar_one_or_none()
+        if found:
+            artist_match = {"id": found.id, "name_ru": found.name_ru, "name_en": found.name_en}
+
+    return {
+        "ai_raw": ai_result,
+        "suggested": {
+            "title": ai_result.get("title"),
+            "artist": artist_match,
+            "artist_name_suggestion": artist_name,
+            "year": _parse_year(ai_result.get("year_estimate")),
+            "techniques": matched_techniques,
+            "description": ai_result.get("description"),
+            "condition": ai_result.get("condition"),
+            "style_period": ai_result.get("style_period"),
+            "estimated_price_rub": ai_result.get("estimated_price_rub"),
+            "confidence": ai_result.get("confidence"),
+        },
+    }
+
+
+def _parse_year(year_str: str | None) -> int | None:
+    if not year_str:
+        return None
+    # "1967" -> 1967, "1960-е" -> 1960
+    digits = "".join(c for c in str(year_str) if c.isdigit())
+    return int(digits[:4]) if len(digits) >= 4 else None
 
 
 @router.patch("/{artwork_id}/status")

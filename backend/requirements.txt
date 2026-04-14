@@ -12,3 +12,4 @@ pillow
 boto3
 celery[redis]
 redis
+httpx

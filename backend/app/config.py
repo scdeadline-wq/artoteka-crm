@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
+    # AI (OpenRouter)
+    openrouter_api_key: str = ""
+    ai_model: str = "google/gemini-2.0-flash-001"
+
     # Telegram
     telegram_bot_token: str = ""
 
