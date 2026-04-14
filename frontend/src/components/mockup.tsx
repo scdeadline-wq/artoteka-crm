@@ -6,14 +6,12 @@ import { Loader2 } from "lucide-react";
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 const STYLES = [
-  { id: "office", name: "Кабинет" },
   { id: "living", name: "Гостиная" },
-  { id: "bedroom", name: "Спальня" },
-  { id: "gallery", name: "Галерея" },
+  { id: "office", name: "Кабинет" },
 ];
 
 export default function ArtworkMockup({ artworkId }: { artworkId: number }) {
-  const [activeStyle, setActiveStyle] = useState("office");
+  const [activeStyle, setActiveStyle] = useState("living");
   const [loading, setLoading] = useState(true);
   const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 

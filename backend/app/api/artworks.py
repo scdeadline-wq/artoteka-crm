@@ -11,7 +11,7 @@ from fastapi.responses import Response as FastAPIResponse
 from app.services.storage import upload_image, get_image_bytes
 from app.services.ai import analyze_artwork_image
 from app.services.enhance import auto_enhance, smart_crop
-from app.services.mockup import generate_mockup
+from app.services.mockup import generate_mockup, generate_custom_mockup
 
 router = APIRouter()
 
@@ -297,7 +297,23 @@ async def get_mockup(
     t: str = "",
     db: AsyncSession = Depends(get_db),
 ):
-    """Генерирует мокап произведения в интерьере."""
+    """Генерирует мокап произведения в интерьере. Кеширует в MinIO."""
+    import boto3
+    from app.config import settings as cfg
+
+    # Проверяем кеш в MinIO
+    cache_key = f"mockups/{artwork_id}/{style}.jpg"
+    s3 = boto3.client("s3", endpoint_url=cfg.s3_endpoint, aws_access_key_id=cfg.s3_access_key, aws_secret_access_key=cfg.s3_secret_key)
+    try:
+        cached = s3.get_object(Bucket=cfg.s3_bucket, Key=cache_key)
+        return FastAPIResponse(
+            content=cached["Body"].read(),
+            media_type="image/jpeg",
+            headers={"Cache-Control": "public, max-age=86400", "X-Cache": "HIT"},
+        )
+    except s3.exceptions.NoSuchKey:
+        pass
+
     stmt = (
         select(Artwork)
         .options(selectinload(Artwork.images))
@@ -313,7 +329,6 @@ async def get_mockup(
     if not primary:
         raise HTTPException(status_code=400, detail="No images for this artwork")
 
-    # Загружаем изображение из S3
     key = primary.url.replace("/images/", "", 1)
     image_data, _ = get_image_bytes(key)
 
@@ -324,8 +339,51 @@ async def get_mockup(
         height_cm=float(artwork.height_cm) if artwork.height_cm else None,
     )
 
+    # Сохраняем в кеш
+    s3.put_object(Bucket=cfg.s3_bucket, Key=cache_key, Body=mockup_bytes, ContentType="image/jpeg")
+
     return FastAPIResponse(
         content=mockup_bytes,
         media_type="image/jpeg",
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={"Cache-Control": "public, max-age=86400", "X-Cache": "MISS"},
+    )
+
+
+@router.post("/{artwork_id}/custom-mockup")
+async def custom_mockup(
+    artwork_id: int,
+    room_photo: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Персональный мокап: фото комнаты клиента + произведение."""
+    stmt = (
+        select(Artwork)
+        .options(selectinload(Artwork.images))
+        .where(Artwork.id == artwork_id)
+    )
+    artwork = (await db.execute(stmt)).scalar_one_or_none()
+    if not artwork:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+
+    primary = next((img for img in artwork.images if img.is_primary), None)
+    if not primary and artwork.images:
+        primary = artwork.images[0]
+    if not primary:
+        raise HTTPException(status_code=400, detail="No images for this artwork")
+
+    key = primary.url.replace("/images/", "", 1)
+    artwork_data, _ = get_image_bytes(key)
+    room_data = await room_photo.read()
+
+    result = await generate_custom_mockup(
+        room_data,
+        artwork_data,
+        width_cm=float(artwork.width_cm) if artwork.width_cm else None,
+        height_cm=float(artwork.height_cm) if artwork.height_cm else None,
+    )
+
+    return FastAPIResponse(
+        content=result,
+        media_type="image/jpeg",
     )
