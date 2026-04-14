@@ -19,6 +19,8 @@ interface AISuggestion {
   condition: string | null;
   style_period: string | null;
   tags: string[];
+  width_cm: number | null;
+  height_cm: number | null;
   estimated_price_rub: string | null;
   confidence: string | null;
 }
@@ -49,6 +51,8 @@ export default function NewArtworkPage() {
     description: "",
     condition: "",
     location: "",
+    width_cm: "",
+    height_cm: "",
     purchase_price: "",
     sale_price: "",
     status: "draft",
@@ -78,6 +82,8 @@ export default function NewArtworkPage() {
         description: suggestion.description || "",
         condition: suggestion.condition || "",
         technique_ids: suggestion.techniques.map((t) => t.id),
+        width_cm: suggestion.width_cm ? String(suggestion.width_cm) : "",
+        height_cm: suggestion.height_cm ? String(suggestion.height_cm) : "",
         sale_price: suggestion.estimated_price_rub
           ? String(suggestion.estimated_price_rub)
           : "",
@@ -124,6 +130,8 @@ export default function NewArtworkPage() {
         description: form.description || null,
         condition: form.condition || null,
         location: form.location || null,
+        width_cm: form.width_cm ? Number(form.width_cm) : null,
+        height_cm: form.height_cm ? Number(form.height_cm) : null,
         purchase_price: form.purchase_price ? Number(form.purchase_price) : null,
         sale_price: form.sale_price ? Number(form.sale_price) : null,
         status: form.status,
@@ -445,6 +453,41 @@ export default function NewArtworkPage() {
                 }
                 className="w-full rounded-lg border px-3 py-2 text-sm"
                 placeholder="AI заполнит"
+              />
+            </div>
+          </div>
+
+          <div className="mb-4 grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">
+                Ширина (см)
+                {form.width_cm && <span className="ml-1 text-amber-600">AI</span>}
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.width_cm}
+                onChange={(e) =>
+                  setForm({ ...form, width_cm: e.target.value })
+                }
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+                placeholder="напр. 60"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">
+                Высота (см)
+                {form.height_cm && <span className="ml-1 text-amber-600">AI</span>}
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.height_cm}
+                onChange={(e) =>
+                  setForm({ ...form, height_cm: e.target.value })
+                }
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+                placeholder="напр. 80"
               />
             </div>
           </div>
