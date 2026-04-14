@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     # AI (OpenRouter)
     openrouter_api_key: str = ""
     ai_model: str = "google/gemini-2.0-flash-001"
+    mockup_model: str = "openai/gpt-5-image"
 
     # Telegram
     telegram_bot_token: str = ""

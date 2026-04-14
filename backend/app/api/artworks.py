@@ -7,8 +7,11 @@ from app.database import get_db
 from app.auth import get_current_user
 from app.models import Artwork, ArtworkStatus, Artist, Technique, Image, User
 from app.schemas.artwork import ArtworkCreate, ArtworkUpdate, ArtworkOut, ArtworkListOut
-from app.services.storage import upload_image
+from fastapi.responses import Response as FastAPIResponse
+from app.services.storage import upload_image, get_image_bytes
 from app.services.ai import analyze_artwork_image
+from app.services.enhance import auto_enhance, smart_crop
+from app.services.mockup import generate_mockup
 
 router = APIRouter()
 
@@ -253,3 +256,60 @@ async def upload_artwork_image(
     await db.commit()
     await db.refresh(image)
     return {"id": image.id, "url": image.url}
+
+
+@router.post("/enhance-image")
+async def enhance_image_endpoint(
+    file: UploadFile = File(...),
+    crop: bool = True,
+    _: User = Depends(get_current_user),
+):
+    """Улучшить фото: обрезка фона + авто-контраст/резкость."""
+    image_bytes = await file.read()
+
+    if crop:
+        image_bytes = smart_crop(image_bytes)
+
+    image_bytes = auto_enhance(image_bytes)
+
+    return FastAPIResponse(
+        content=image_bytes,
+        media_type="image/jpeg",
+        headers={"Content-Disposition": "inline; filename=enhanced.jpg"},
+    )
+
+
+@router.get("/{artwork_id}/mockup")
+async def get_mockup(
+    artwork_id: int,
+    style: str = "office",
+    t: str = "",
+    db: AsyncSession = Depends(get_db),
+):
+    """Генерирует мокап произведения в интерьере."""
+    stmt = (
+        select(Artwork)
+        .options(selectinload(Artwork.images))
+        .where(Artwork.id == artwork_id)
+    )
+    artwork = (await db.execute(stmt)).scalar_one_or_none()
+    if not artwork:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+
+    primary = next((img for img in artwork.images if img.is_primary), None)
+    if not primary and artwork.images:
+        primary = artwork.images[0]
+    if not primary:
+        raise HTTPException(status_code=400, detail="No images for this artwork")
+
+    # Загружаем изображение из S3
+    key = primary.url.replace("/images/", "", 1)
+    image_data, _ = get_image_bytes(key)
+
+    mockup_bytes = await generate_mockup(image_data, style)
+
+    return FastAPIResponse(
+        content=mockup_bytes,
+        media_type="image/jpeg",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )

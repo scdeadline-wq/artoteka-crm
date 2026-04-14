@@ -25,7 +25,7 @@ export default function ArtworkDetailPage({
   if (isLoading) return <p className="text-gray-500">Загрузка...</p>;
   if (!artwork) return <p className="text-red-500">Не найдено</p>;
 
-  const primaryImage = artwork.images.find((i) => i.is_primary) || artwork.images[0];
+  const hasImages = artwork.images.length > 0;
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -131,15 +131,12 @@ export default function ArtworkDetailPage({
       </div>
 
       {/* Мокапы в интерьере */}
-      {primaryImage && (
+      {hasImages && (
         <div className="rounded-xl bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">
             В интерьере
           </h2>
-          <ArtworkMockup
-            imageSrc={primaryImage.url}
-            title={artwork.title || undefined}
-          />
+          <ArtworkMockup artworkId={artwork.id} />
         </div>
       )}
     </div>
