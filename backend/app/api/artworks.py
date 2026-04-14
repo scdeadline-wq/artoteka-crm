@@ -209,10 +209,21 @@ async def analyze_image(
             "condition": ai_result.get("condition"),
             "style_period": ai_result.get("style_period"),
             "tags": ai_result.get("tags") or [],
+            "width_cm": _parse_float(ai_result.get("width_cm")),
+            "height_cm": _parse_float(ai_result.get("height_cm")),
             "estimated_price_rub": ai_result.get("estimated_price_rub"),
             "confidence": ai_result.get("confidence"),
         },
     }
+
+
+def _parse_float(val) -> float | None:
+    if val is None:
+        return None
+    try:
+        return float(str(val).replace(",", ".").strip())
+    except (ValueError, TypeError):
+        return None
 
 
 def _parse_year(year_str: str | None) -> int | None:

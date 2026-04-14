@@ -26,6 +26,8 @@ class ArtworkCreate(BaseModel):
     has_expertise: bool = False
     status: str = "draft"
     location: str | None = None
+    width_cm: float | None = None
+    height_cm: float | None = None
     purchase_price: Decimal | None = None
     sale_price: Decimal | None = None
     notes: str | None = None
@@ -42,6 +44,8 @@ class ArtworkUpdate(BaseModel):
     has_expertise: bool | None = None
     status: str | None = None
     location: str | None = None
+    width_cm: float | None = None
+    height_cm: float | None = None
     purchase_price: Decimal | None = None
     sale_price: Decimal | None = None
     notes: str | None = None
@@ -60,6 +64,8 @@ class ArtworkOut(BaseModel):
     has_expertise: bool
     status: str
     location: str | None
+    width_cm: float | None
+    height_cm: float | None
     purchase_price: Decimal | None
     sale_price: Decimal | None
     notes: str | None
@@ -80,5 +86,7 @@ class ArtworkListOut(BaseModel):
     sale_price: Decimal | None
     primary_image: str | None = None
     year: int | None
+    width_cm: float | None = None
+    height_cm: float | None = None
 
     model_config = {"from_attributes": True}

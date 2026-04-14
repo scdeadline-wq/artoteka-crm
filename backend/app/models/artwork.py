@@ -43,6 +43,8 @@ class Artwork(Base):
     has_expertise: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[ArtworkStatus] = mapped_column(Enum(ArtworkStatus), default=ArtworkStatus.draft, index=True)
     location: Mapped[str | None] = mapped_column(String(300), default=None)
+    width_cm: Mapped[float | None] = mapped_column(Numeric(8, 1), default=None)
+    height_cm: Mapped[float | None] = mapped_column(Numeric(8, 1), default=None)
     purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
     sale_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
