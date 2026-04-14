@@ -18,6 +18,7 @@ interface AISuggestion {
   description: string | null;
   condition: string | null;
   style_period: string | null;
+  tags: string[];
   estimated_price_rub: string | null;
   confidence: string | null;
 }
@@ -439,25 +440,45 @@ export default function NewArtworkPage() {
             </div>
           </div>
 
+          {/* Стиль */}
+          {aiSuggestion?.style_period && (
+            <div className="mb-4">
+              <label className="mb-1 block text-xs text-gray-500">Стиль / направление</label>
+              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">
+                {aiSuggestion.style_period}
+              </div>
+            </div>
+          )}
+
           {/* Описание */}
-          <div>
-            <label className="mb-1 block text-xs text-gray-500">
-              Описание
-              {aiSuggestion?.style_period && (
-                <span className="ml-2 text-amber-600">
-                  Стиль: {aiSuggestion.style_period}
-                </span>
-              )}
-            </label>
+          <div className="mb-4">
+            <label className="mb-1 block text-xs text-gray-500">Описание</label>
             <textarea
               value={form.description}
               onChange={(e) =>
                 setForm({ ...form, description: e.target.value })
               }
-              rows={3}
+              rows={4}
               className="w-full rounded-lg border px-3 py-2 text-sm"
             />
           </div>
+
+          {/* Теги */}
+          {aiSuggestion?.tags && aiSuggestion.tags.length > 0 && (
+            <div>
+              <label className="mb-2 block text-xs text-gray-500">Теги (AI)</label>
+              <div className="flex flex-wrap gap-1.5">
+                {aiSuggestion.tags.map((tag) => (
+                  <span
+                    key={tag}
+                    className="rounded-full bg-blue-50 border border-blue-200 px-2.5 py-1 text-xs text-blue-700"
+                  >
+                    #{tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Цены и локация */}

@@ -205,6 +205,7 @@ async def analyze_image(
             "description": ai_result.get("description"),
             "condition": ai_result.get("condition"),
             "style_period": ai_result.get("style_period"),
+            "tags": ai_result.get("tags") or [],
             "estimated_price_rub": ai_result.get("estimated_price_rub"),
             "confidence": ai_result.get("confidence"),
         },
