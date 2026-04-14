@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, Sparkles, Loader2, X, Check } from "lucide-react";
+import { Upload, Sparkles, Loader2, X, Check, Wand2 } from "lucide-react";
 import api from "@/lib/api";
 import type { Artist, Technique } from "@/lib/types";
 
@@ -29,6 +29,7 @@ export default function NewArtworkPage() {
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<AISuggestion | null>(null);
+  const [enhanced, setEnhanced] = useState(false);
 
   const { data: artists = [] } = useQuery<Artist[]>({
     queryKey: ["artists"],
@@ -82,6 +83,24 @@ export default function NewArtworkPage() {
           : "",
       }));
       setStep("review");
+    },
+  });
+
+  // Улучшение фото
+  const enhance = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      const { data } = await api.post("/artworks/enhance-image/", fd, {
+        responseType: "blob",
+      });
+      return data as Blob;
+    },
+    onSuccess: (blob) => {
+      const enhancedFile = new File([blob], "enhanced.jpg", { type: "image/jpeg" });
+      setImageFile(enhancedFile);
+      setImagePreview(URL.createObjectURL(blob));
+      setEnhanced(true);
     },
   });
 
@@ -266,22 +285,45 @@ export default function NewArtworkPage() {
         {/* Фото-превью */}
         <div className="flex gap-4 rounded-xl bg-white p-5 shadow-sm">
           {imagePreview ? (
-            <div className="relative">
-              <img
-                src={imagePreview}
-                alt=""
-                className="h-40 w-40 rounded-lg object-cover"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setImageFile(null);
-                  setImagePreview(null);
-                }}
-                className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white"
-              >
-                <X size={12} />
-              </button>
+            <div className="flex flex-col gap-2">
+              <div className="relative">
+                <img
+                  src={imagePreview}
+                  alt=""
+                  className="h-40 w-40 rounded-lg object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImageFile(null);
+                    setImagePreview(null);
+                    setEnhanced(false);
+                  }}
+                  className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+              {!enhanced && imageFile && (
+                <button
+                  type="button"
+                  onClick={() => enhance.mutate(imageFile)}
+                  disabled={enhance.isPending}
+                  className="flex items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+                >
+                  {enhance.isPending ? (
+                    <Loader2 size={12} className="animate-spin" />
+                  ) : (
+                    <Wand2 size={12} />
+                  )}
+                  {enhance.isPending ? "Улучшаю..." : "Улучшить фото"}
+                </button>
+              )}
+              {enhanced && (
+                <span className="flex items-center justify-center gap-1 text-xs text-green-600">
+                  <Check size={12} /> Улучшено
+                </span>
+              )}
             </div>
           ) : (
             <label className="flex h-40 w-40 cursor-pointer items-center justify-center rounded-lg border-2 border-dashed text-gray-400 hover:border-gray-400">
