@@ -4,7 +4,11 @@ import asyncio
 from sqlalchemy import select
 from app.database import engine, async_session, Base
 from app.models import Technique, User, UserRole
-from passlib.hash import bcrypt
+import bcrypt as _bcrypt
+
+
+def hash_password(password: str) -> str:
+    return _bcrypt.hashpw(password.encode(), _bcrypt.gensalt()).decode()
 
 TECHNIQUES = [
     # Живопись
@@ -73,7 +77,7 @@ async def seed():
             session.add(User(
                 name="Паруер",
                 email="paruer@artoteka.ru",
-                password_hash=bcrypt.hash("artoteka2026"),
+                password_hash=hash_password("artoteka2026"),
                 role=UserRole.owner,
             ))
 
