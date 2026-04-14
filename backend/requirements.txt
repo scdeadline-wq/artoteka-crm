@@ -13,3 +13,4 @@ boto3
 celery[redis]
 redis
 httpx
+pillow-heif

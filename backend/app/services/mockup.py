@@ -10,6 +10,7 @@ import httpx
 from PIL import Image
 
 from app.config import settings
+from app.services.image_utils import normalize_image
 
 ROOM_PROMPTS = {
     "living": "Create a photorealistic interior mockup: a modern Scandinavian living room. Light warm grey walls, a large comfortable beige linen sofa centered in front. Light oak hardwood floor, round marble coffee table, green monstera plant. The attached artwork is shown hanging on the wall above the sofa, in a slim black frame with white mat. Soft natural daylight from the left. Ultra realistic interior design photography.",
@@ -25,6 +26,7 @@ async def generate_mockup(
 ) -> bytes:
     """Генерирует фотореалистичный мокап через AI."""
 
+    artwork_bytes = normalize_image(artwork_bytes)
     prompt = ROOM_PROMPTS.get(style, ROOM_PROMPTS["living"])
 
     # Добавляем размеры в промпт для правильного масштаба
@@ -130,6 +132,10 @@ async def generate_custom_mockup(
     height_cm: float | None = None,
 ) -> bytes:
     """Персональный мокап: фото комнаты клиента + картина на стене."""
+
+    # Нормализуем форматы (HEIC, WEBP и т.д. → JPEG)
+    room_bytes = normalize_image(room_bytes)
+    artwork_bytes = normalize_image(artwork_bytes)
 
     room_b64 = base64.b64encode(room_bytes).decode("utf-8")
     artwork_b64 = base64.b64encode(artwork_bytes).decode("utf-8")
