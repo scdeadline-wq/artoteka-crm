@@ -31,6 +31,8 @@ export interface Artwork {
   has_expertise: boolean;
   status: string;
   location: string | null;
+  width_cm: number | null;
+  height_cm: number | null;
   purchase_price: number | null;
   sale_price: number | null;
   notes: string | null;
