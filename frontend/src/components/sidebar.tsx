@@ -13,7 +13,7 @@ import {
 import { useAuthStore } from "@/lib/store";
 
 const NAV = [
-  { href: "/", label: "Дашборд", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Дашборд", icon: LayoutDashboard },
   { href: "/artworks", label: "Произведения", icon: Image },
   { href: "/artists", label: "Художники", icon: Palette },
   { href: "/clients", label: "Клиенты", icon: Users },
@@ -31,8 +31,7 @@ export default function Sidebar() {
       </div>
       <nav className="flex-1 space-y-1 px-3">
         {NAV.map(({ href, label, icon: Icon }) => {
-          const active =
-            href === "/" ? pathname === "/" : pathname.startsWith(href);
+          const active = pathname.startsWith(href);
           return (
             <Link
               key={href}
