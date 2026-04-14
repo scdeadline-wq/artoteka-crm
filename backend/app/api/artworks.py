@@ -317,7 +317,12 @@ async def get_mockup(
     key = primary.url.replace("/images/", "", 1)
     image_data, _ = get_image_bytes(key)
 
-    mockup_bytes = await generate_mockup(image_data, style)
+    mockup_bytes = await generate_mockup(
+        image_data,
+        style,
+        width_cm=float(artwork.width_cm) if artwork.width_cm else None,
+        height_cm=float(artwork.height_cm) if artwork.height_cm else None,
+    )
 
     return FastAPIResponse(
         content=mockup_bytes,

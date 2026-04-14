@@ -19,10 +19,24 @@ ROOM_PROMPTS = {
 }
 
 
-async def generate_mockup(artwork_bytes: bytes, style: str = "office") -> bytes:
+async def generate_mockup(
+    artwork_bytes: bytes,
+    style: str = "office",
+    width_cm: float | None = None,
+    height_cm: float | None = None,
+) -> bytes:
     """Генерирует фотореалистичный мокап через AI."""
 
     prompt = ROOM_PROMPTS.get(style, ROOM_PROMPTS["living"])
+
+    # Добавляем размеры в промпт для правильного масштаба
+    if width_cm and height_cm:
+        size_desc = f"The artwork is {width_cm}×{height_cm} cm ({width_cm/100:.1f}×{height_cm/100:.1f} m). Scale it realistically relative to the furniture and room. "
+        if max(width_cm, height_cm) < 30:
+            size_desc += "This is a SMALL work, it should look compact on the wall. "
+        elif max(width_cm, height_cm) > 100:
+            size_desc += "This is a LARGE work, it should dominate the wall space. "
+        prompt = size_desc + prompt
 
     # Кодируем картину
     artwork_b64 = base64.b64encode(artwork_bytes).decode("utf-8")
