@@ -4,6 +4,7 @@ from app.models.technique import Technique
 from app.models.artwork import Artwork, ArtworkStatus, Image, artwork_techniques
 from app.models.client import Client, ClientType, client_artists
 from app.models.sale import Sale
+from app.models.mockup import Mockup
 
 __all__ = [
     "User", "UserRole",
@@ -12,4 +13,5 @@ __all__ = [
     "Artwork", "ArtworkStatus", "Image", "artwork_techniques",
     "Client", "ClientType", "client_artists",
     "Sale",
+    "Mockup",
 ]

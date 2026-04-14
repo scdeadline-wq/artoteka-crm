@@ -1,13 +1,24 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, Sparkles, Loader2, Image as ImageIcon } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Upload, Sparkles, Loader2, Image as ImageIcon, Download, Clock } from "lucide-react";
 import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
 import type { ArtworkListItem } from "@/lib/types";
 
+interface MockupHistoryItem {
+  id: number;
+  artwork_id: number;
+  artwork_title: string | null;
+  artist_name: string | null;
+  room_url: string;
+  result_url: string;
+  created_at: string;
+}
+
 export default function CustomMockupPage() {
+  const queryClient = useQueryClient();
   const [roomFile, setRoomFile] = useState<File | null>(null);
   const [roomPreview, setRoomPreview] = useState<string | null>(null);
   const [selectedArtwork, setSelectedArtwork] = useState<number | null>(null);
@@ -15,7 +26,12 @@ export default function CustomMockupPage() {
 
   const { data: artworks = [] } = useQuery<ArtworkListItem[]>({
     queryKey: ["artworks-for-mockup"],
-    queryFn: () => api.get("/artworks", { params: { status: "for_sale", limit: 100 } }).then((r) => r.data),
+    queryFn: () => api.get("/artworks", { params: { limit: 100 } }).then((r) => r.data),
+  });
+
+  const { data: history = [] } = useQuery<MockupHistoryItem[]>({
+    queryKey: ["mockup-history"],
+    queryFn: () => api.get("/artworks/mockups/history").then((r) => r.data),
   });
 
   const generate = useMutation({
@@ -23,14 +39,13 @@ export default function CustomMockupPage() {
       if (!roomFile || !selectedArtwork) throw new Error("Missing data");
       const fd = new FormData();
       fd.append("room_photo", roomFile);
-      const { data } = await api.post(
-        `/artworks/${selectedArtwork}/custom-mockup/`,
-        fd,
-        { responseType: "blob" }
-      );
-      return URL.createObjectURL(data as Blob);
+      const { data } = await api.post(`/artworks/${selectedArtwork}/custom-mockup/`, fd);
+      return data as { id: number; result_url: string };
     },
-    onSuccess: (url) => setResultUrl(url),
+    onSuccess: (data) => {
+      setResultUrl(imageUrl(data.result_url));
+      queryClient.invalidateQueries({ queryKey: ["mockup-history"] });
+    },
   });
 
   return (
@@ -128,7 +143,7 @@ export default function CustomMockupPage() {
             ))}
             {artworks.length === 0 && (
               <p className="py-8 text-center text-sm text-gray-400">
-                Нет произведений в продаже
+                Нет произведений
               </p>
             )}
           </div>
@@ -165,14 +180,44 @@ export default function CustomMockupPage() {
             alt="Персональный мокап"
             className="w-full rounded-lg"
           />
-          <div className="mt-3 flex gap-2">
+          <div className="mt-3">
             <a
               href={resultUrl}
               download="mockup.jpg"
-              className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
             >
-              Скачать
+              <Download size={14} /> Скачать
             </a>
+          </div>
+        </div>
+      )}
+
+      {/* История мокапов */}
+      {history.length > 0 && (
+        <div className="mt-8">
+          <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
+            <Clock size={18} /> История мокапов
+          </h2>
+          <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+            {history.map((m) => (
+              <div key={m.id} className="group overflow-hidden rounded-xl bg-white shadow-sm">
+                <a href={imageUrl(m.result_url)} target="_blank" rel="noreferrer">
+                  <img
+                    src={imageUrl(m.result_url)}
+                    alt=""
+                    className="aspect-[4/3] w-full object-cover transition-transform group-hover:scale-105"
+                  />
+                </a>
+                <div className="p-3">
+                  <p className="text-sm font-medium text-gray-900">
+                    {m.artwork_title || "Без названия"}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {m.artist_name} — {new Date(m.created_at).toLocaleDateString("ru")}
+                  </p>
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}

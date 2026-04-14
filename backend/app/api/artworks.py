@@ -12,6 +12,7 @@ from app.services.storage import upload_image, get_image_bytes
 from app.services.ai import analyze_artwork_image
 from app.services.enhance import auto_enhance, smart_crop
 from app.services.mockup import generate_mockup, generate_custom_mockup
+from app.models.mockup import Mockup
 
 router = APIRouter()
 
@@ -383,7 +384,62 @@ async def custom_mockup(
         height_cm=float(artwork.height_cm) if artwork.height_cm else None,
     )
 
-    return FastAPIResponse(
-        content=result,
-        media_type="image/jpeg",
+    # Сохраняем в MinIO
+    import uuid
+    import boto3
+    from app.config import settings as cfg
+    from app.services.image_utils import normalize_image
+
+    s3 = boto3.client("s3", endpoint_url=cfg.s3_endpoint, aws_access_key_id=cfg.s3_access_key, aws_secret_access_key=cfg.s3_secret_key)
+    uid = uuid.uuid4().hex
+
+    room_key = f"mockups/custom/{uid}_room.jpg"
+    s3.put_object(Bucket=cfg.s3_bucket, Key=room_key, Body=normalize_image(room_data), ContentType="image/jpeg")
+
+    result_key = f"mockups/custom/{uid}_result.jpg"
+    s3.put_object(Bucket=cfg.s3_bucket, Key=result_key, Body=result, ContentType="image/jpeg")
+
+    mockup = Mockup(
+        artwork_id=artwork_id,
+        room_image_url=f"/images/{room_key}",
+        result_image_url=f"/images/{result_key}",
+        style="custom",
     )
+    db.add(mockup)
+    await db.commit()
+    await db.refresh(mockup)
+
+    return {
+        "id": mockup.id,
+        "result_url": mockup.result_image_url,
+        "room_url": mockup.room_image_url,
+        "artwork_id": artwork_id,
+    }
+
+
+@router.get("/mockups/history")
+async def mockup_history(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """История всех персональных мокапов."""
+    stmt = (
+        select(Mockup)
+        .options(selectinload(Mockup.artwork).selectinload(Artwork.artist))
+        .where(Mockup.style == "custom")
+        .order_by(Mockup.created_at.desc())
+        .limit(50)
+    )
+    mockups = (await db.execute(stmt)).scalars().all()
+    return [
+        {
+            "id": m.id,
+            "artwork_id": m.artwork_id,
+            "artwork_title": m.artwork.title if m.artwork else None,
+            "artist_name": m.artwork.artist.name_ru if m.artwork and m.artwork.artist else None,
+            "room_url": m.room_image_url,
+            "result_url": m.result_image_url,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in mockups
+    ]
