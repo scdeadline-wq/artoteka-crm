@@ -1,4 +1,9 @@
-"""Реверс-поиск изображений через Яндекс (SearchAPI.io)."""
+"""Реверс-поиск изображений через Google Lens (SearchAPI.io).
+
+Yandex Reverse Image работает по индексированным URL и не находит
+совпадений для уникальных загруженных пользователем изображений.
+Google Lens делает perceptual hash search и подходит нашему кейсу.
+"""
 import hashlib
 import json
 from io import BytesIO
@@ -13,6 +18,7 @@ from app.config import settings
 CACHE_TTL_SECONDS = 7 * 24 * 3600
 TEMP_PREFIX = "temp/analyze"
 SEARCHAPI_URL = "https://www.searchapi.io/api/v1/search"
+SEARCH_ENGINE = "google_lens"
 TOP_RESULTS = 5
 
 # Форматы, которые Яндекс умеет открывать при реверс-поиске
@@ -29,7 +35,7 @@ async def search_artwork_by_image(image_bytes: bytes) -> list[dict]:
         return []
 
     image_hash = hashlib.sha256(image_bytes).hexdigest()
-    cache_key = f"yandex_search:{image_hash}"
+    cache_key = f"image_search:{image_hash}"
 
     redis_client = redis_async.from_url(settings.redis_url, decode_responses=True)
     try:
@@ -92,7 +98,7 @@ async def _call_searchapi(image_url: str) -> list[dict]:
         response = await client.get(
             SEARCHAPI_URL,
             params={
-                "engine": "yandex_reverse_image",
+                "engine": SEARCH_ENGINE,
                 "url": image_url,
                 "api_key": settings.searchapi_key,
             },
