@@ -1,10 +1,12 @@
 """Реверс-поиск изображений через Яндекс (SearchAPI.io)."""
 import hashlib
 import json
+from io import BytesIO
 
 import boto3
 import httpx
 import redis.asyncio as redis_async
+from PIL import Image
 
 from app.config import settings
 
@@ -12,6 +14,9 @@ CACHE_TTL_SECONDS = 7 * 24 * 3600
 TEMP_PREFIX = "temp/analyze"
 SEARCHAPI_URL = "https://www.searchapi.io/api/v1/search"
 TOP_RESULTS = 5
+
+# Форматы, которые Яндекс умеет открывать при реверс-поиске
+SEARCH_SUPPORTED_FORMATS = {"JPEG", "PNG", "WEBP", "GIF", "BMP"}
 
 
 async def search_artwork_by_image(image_bytes: bytes) -> list[dict]:
@@ -42,7 +47,14 @@ async def search_artwork_by_image(image_bytes: bytes) -> list[dict]:
 
 
 def _upload_temp_image(image_bytes: bytes, image_hash: str) -> str:
-    key = f"{TEMP_PREFIX}/{image_hash}.jpg"
+    """Заливает байты в MinIO без перекодирования (perceptual hash важен для реверс-поиска).
+
+    HEIC и другие неподдерживаемые форматы конвертируются в JPEG quality=98.
+    Известные форматы (JPEG, PNG, WEBP) идут as-is.
+    """
+    body, ext, content_type = _prepare_for_search(image_bytes)
+    key = f"{TEMP_PREFIX}/{image_hash}.{ext}"
+
     client = boto3.client(
         "s3",
         endpoint_url=settings.s3_endpoint,
@@ -52,10 +64,27 @@ def _upload_temp_image(image_bytes: bytes, image_hash: str) -> str:
     client.put_object(
         Bucket=settings.s3_bucket,
         Key=key,
-        Body=image_bytes,
-        ContentType="image/jpeg",
+        Body=body,
+        ContentType=content_type,
     )
     return f"{settings.public_base_url}/images/{key}"
+
+
+def _prepare_for_search(image_bytes: bytes) -> tuple[bytes, str, str]:
+    """Возвращает (bytes, extension, content_type) для загрузки в MinIO."""
+    img = Image.open(BytesIO(image_bytes))
+    fmt = (img.format or "").upper()
+
+    if fmt in SEARCH_SUPPORTED_FORMATS:
+        ext = "jpg" if fmt == "JPEG" else fmt.lower()
+        return image_bytes, ext, f"image/{fmt.lower()}"
+
+    # HEIC/HEIF и прочая экзотика — конвертируем в JPEG с минимальной потерей
+    if img.mode in ("RGBA", "P", "LA"):
+        img = img.convert("RGB")
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=98)
+    return buf.getvalue(), "jpg", "image/jpeg"
 
 
 async def _call_searchapi(image_url: str) -> list[dict]:

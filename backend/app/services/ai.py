@@ -38,11 +38,12 @@ async def analyze_artwork_image(image_bytes: bytes, content_type: str = "image/j
     if not settings.openrouter_api_key:
         return {"error": "OpenRouter API key not configured"}
 
-    # Нормализуем формат (HEIC, WEBP → JPEG)
-    image_bytes = normalize_image(image_bytes)
-
-    # Реверс-поиск в Яндексе по нормализованному изображению
+    # Реверс-поиск Яндекса делаем по ОРИГИНАЛЬНЫМ байтам — perceptual hash
+    # чувствителен к перепаковке, после normalize_image Яндекс не находит совпадений
     search_results = await search_artwork_by_image(image_bytes)
+
+    # Нормализуем формат (HEIC, WEBP → JPEG) для Gemini
+    image_bytes = normalize_image(image_bytes)
 
     base64_image = base64.b64encode(image_bytes).decode("utf-8")
     user_text = _build_user_prompt(search_results)
