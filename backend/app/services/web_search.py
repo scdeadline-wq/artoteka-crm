@@ -20,6 +20,13 @@ import httpx
 import redis.asyncio as redis_async
 from PIL import Image
 
+# Регистрируем HEIC/HEIF opener — пользователи галерей фотографируют на iPhone
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass
+
 from app.config import settings
 from app.services.yandex_native import yandex_search_by_image
 
@@ -50,6 +57,7 @@ async def search_artwork_by_image(image_bytes: bytes) -> list[dict]:
     Каждый элемент: {title, source, link, snippet, engine}.
     Пустой список если оба движка ничего не нашли.
     """
+    # Хеш считаем от оригинала — кеш стабилен независимо от перекодирования
     image_hash = hashlib.sha256(image_bytes).hexdigest()
     cache_key = f"image_search:{image_hash}"
 
@@ -59,8 +67,11 @@ async def search_artwork_by_image(image_bytes: bytes) -> list[dict]:
         if cached is not None:
             return json.loads(cached)
 
-        google_task = _google_lens_search(image_bytes, image_hash)
-        yandex_task = yandex_search_by_image(image_bytes)
+        # HEIC/HEIF/TIFF и т.п. → JPEG для обоих движков. JPEG/PNG/WEBP идут as-is.
+        search_bytes, ext, content_type = _prepare_for_search(image_bytes)
+
+        google_task = _google_lens_search(search_bytes, ext, content_type, image_hash)
+        yandex_task = yandex_search_by_image(search_bytes, content_type)
         google_results, yandex_results = await asyncio.gather(
             google_task, yandex_task, return_exceptions=True
         )
@@ -76,17 +87,15 @@ async def search_artwork_by_image(image_bytes: bytes) -> list[dict]:
         await redis_client.aclose()
 
 
-async def _google_lens_search(image_bytes: bytes, image_hash: str) -> list[dict]:
+async def _google_lens_search(image_bytes: bytes, ext: str, content_type: str, image_hash: str) -> list[dict]:
     if not settings.searchapi_key:
         return []
-    image_url = _upload_temp_image(image_bytes, image_hash)
+    image_url = _upload_temp_image(image_bytes, image_hash, ext, content_type)
     return await _call_searchapi(image_url)
 
 
-def _upload_temp_image(image_bytes: bytes, image_hash: str) -> str:
-    body, ext, content_type = _prepare_for_search(image_bytes)
+def _upload_temp_image(image_bytes: bytes, image_hash: str, ext: str, content_type: str) -> str:
     key = f"{TEMP_PREFIX}/{image_hash}.{ext}"
-
     client = boto3.client(
         "s3",
         endpoint_url=settings.s3_endpoint,
@@ -96,13 +105,17 @@ def _upload_temp_image(image_bytes: bytes, image_hash: str) -> str:
     client.put_object(
         Bucket=settings.s3_bucket,
         Key=key,
-        Body=body,
+        Body=image_bytes,
         ContentType=content_type,
     )
     return f"{settings.public_base_url}/images/{key}"
 
 
 def _prepare_for_search(image_bytes: bytes) -> tuple[bytes, str, str]:
+    """Готовит байты к реверс-поиску: HEIC/HEIF/TIFF → JPEG, прочее as-is.
+
+    Возвращает (bytes, extension, content_type).
+    """
     img = Image.open(BytesIO(image_bytes))
     fmt = (img.format or "").upper()
 
