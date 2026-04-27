@@ -1,0 +1,119 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: always
+    env_file: .env
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    command: >
+      postgres
+        -c shared_buffers=128MB
+        -c work_mem=4MB
+        -c maintenance_work_mem=64MB
+        -c effective_cache_size=512MB
+        -c max_connections=50
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U artoteka"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 400M
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --maxmemory 64mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 96M
+
+  minio:
+    image: minio/minio
+    restart: always
+    command: server /data --console-address ":9001"
+    env_file: .env
+    volumes:
+      - minio_data:/data
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  minio-init:
+    image: minio/mc
+    depends_on:
+      - minio
+    restart: "no"
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set local http://minio:9000 artoteka Min10_Arto7eka_2026!;
+      mc mb local/artoteka-images --ignore-existing;
+      mc anonymous set download local/artoteka-images;
+      exit 0;
+      "
+
+  backend:
+    build:
+      context: ../backend
+    restart: always
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://artoteka:Arto7eka_Pr0d_2026!@postgres:5432/artoteka
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+
+  frontend:
+    build:
+      context: ../frontend
+      args:
+        NEXT_PUBLIC_API_URL: http://185.152.94.51:8000
+    restart: always
+    environment:
+      HOSTNAME: "0.0.0.0"
+    ports:
+      - "80:3000"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  bot:
+    build:
+      context: ../bot
+    restart: always
+    env_file: .env
+    environment:
+      CRM_BASE_URL: http://backend:8000
+    depends_on:
+      backend:
+        condition: service_started
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+
+volumes:
+  postgres_data:
+  redis_data:
+  minio_data:

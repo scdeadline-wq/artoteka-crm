@@ -1,0 +1,3 @@
+python-telegram-bot[ext]==21.6
+httpx>=0.27
+pydantic-settings>=2.0
