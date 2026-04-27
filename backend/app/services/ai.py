@@ -75,12 +75,7 @@ async def analyze_artwork_image(image_bytes: bytes, content_type: str = "image/j
                 "max_tokens": 1000,
             },
         )
-        if response.status_code >= 400:
-            raise httpx.HTTPStatusError(
-                f"OpenRouter {response.status_code}: {response.text[:500]}",
-                request=response.request,
-                response=response,
-            )
+        response.raise_for_status()
         data = response.json()
 
     content = data["choices"][0]["message"]["content"]
