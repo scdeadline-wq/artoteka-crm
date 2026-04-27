@@ -105,6 +105,9 @@ services:
     env_file: .env
     environment:
       CRM_BASE_URL: http://backend:8000
+    extra_hosts:
+      # РКН блокирует часть Telegram IP — пинним на работающий
+      - "api.telegram.org:149.154.167.220"
     depends_on:
       backend:
         condition: service_started

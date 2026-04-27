@@ -13,6 +13,10 @@ class BotSettings(BaseSettings):
     openrouter_api_key: str = ""
     parse_model: str = "anthropic/claude-sonnet-4.6"
 
+    # Whisper транскрипция (OpenAI)
+    openai_api_key: str = ""
+    whisper_model: str = "whisper-1"
+
     model_config = {"env_file": ".env", "extra": "ignore"}
 
     @property

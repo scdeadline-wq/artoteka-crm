@@ -1,4 +1,11 @@
-"""Команда /add — добавить произведение через фото + текстовое описание."""
+"""Команда /add — добавить произведение через фото + голосовое описание.
+
+Сценарий:
+1. /add → ждём фото
+2. Фото получено → ждём голосовое (или текст)
+3. Голос → Whisper → транскрипт → Claude парсер → превью
+4. Подтверждение → создаём artist (если нет) → artwork → загружаем фото
+"""
 from io import BytesIO
 
 from telegram import Update
@@ -8,8 +15,9 @@ from bot.handlers.auth import require_whitelist
 from bot.handlers.formatters import format_artwork_card
 from bot.services.crm import crm
 from bot.services.parser import parse_description
+from bot.services.whisper import transcribe
 
-WAIT_PHOTO, WAIT_DESCRIPTION, CONFIRM = range(3)
+WAIT_PHOTO, WAIT_VOICE, CONFIRM = range(3)
 
 
 @require_whitelist
@@ -26,99 +34,63 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await file.download_to_memory(buf)
     image_bytes = buf.getvalue()
 
-    await update.message.reply_text("🔍 AI анализирует фото...")
+    context.user_data["add_state"] = {"image_bytes": image_bytes}
 
-    try:
-        ai_result = await crm.analyze_image(image_bytes)
-    except Exception as e:
-        await update.message.reply_text(f"Ошибка AI: {e}\nПопробуй ещё раз: /add")
-        return ConversationHandler.END
-
-    suggested = ai_result.get("suggested") or {}
-    sources = ai_result.get("sources") or []
-
-    context.user_data["add_state"] = {
-        "image_bytes": image_bytes,
-        "suggested": suggested,
-        "sources": sources,
-    }
-
-    msg = "🤖 AI распознал:\n"
-    if suggested.get("title"):
-        msg += f"🎨 {suggested['title']}\n"
-    if suggested.get("artist_name_suggestion"):
-        msg += f"👤 {suggested['artist_name_suggestion']}\n"
-    if suggested.get("year"):
-        msg += f"📅 {suggested['year']}\n"
-    if suggested.get("style_period"):
-        msg += f"🎭 {suggested['style_period']}\n"
-    if suggested.get("width_cm") and suggested.get("height_cm"):
-        msg += f"📐 {suggested['width_cm']} × {suggested['height_cm']} см\n"
-    if suggested.get("confidence"):
-        msg += f"📊 Уверенность: {suggested['confidence']}\n"
-    if sources:
-        msg += f"\n🔗 Найдено {len(sources)} источников в интернете\n"
-
-    msg += (
-        "\nДополни голосом или текстом: автор, название, год, техника, размер, цена.\n"
-        "Или /skip если AI всё распознал правильно."
+    await update.message.reply_text(
+        "🎙 Получил фото. Теперь отправь голосовое описание:\n"
+        "автор, название, год, техника, размер, цена, стиль.\n\n"
+        "Или напиши текстом."
     )
-    await update.message.reply_text(msg)
-    return WAIT_DESCRIPTION
+    return WAIT_VOICE
 
 
-async def receive_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    text = update.message.text.strip()
+async def receive_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    voice = update.message.voice or update.message.audio
+    file = await voice.get_file()
+    buf = BytesIO()
+    await file.download_to_memory(buf)
+    audio_bytes = buf.getvalue()
+
+    await update.message.reply_text("🔄 Транскрибирую...")
+    text = await transcribe(audio_bytes)
+    if not text:
+        await update.message.reply_text(
+            "Не получилось транскрибировать. Whisper-ключ не настроен или ошибка API.\n"
+            "Напиши описание текстом или /cancel"
+        )
+        return WAIT_VOICE
+
+    await update.message.reply_text(f"📝 Распознал:\n«{text}»")
+    return await _process_text(update, context, text)
+
+
+async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await _process_text(update, context, update.message.text.strip())
+
+
+async def _process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
     parsed = await parse_description(text)
     context.user_data["add_state"]["parsed"] = parsed
-    context.user_data["add_state"]["raw_description"] = text
-    return await show_preview(update, context)
-
-
-async def skip_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    context.user_data["add_state"]["parsed"] = {}
-    return await show_preview(update, context)
-
-
-async def show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    state = context.user_data["add_state"]
-    suggested = state["suggested"]
-    parsed = state.get("parsed", {})
-
-    # Слияние: parsed (от пользователя) приоритетнее AI suggested
-    merged = {
-        "title": parsed.get("title") or suggested.get("title"),
-        "artist_name": parsed.get("artist_name") or suggested.get("artist_name_suggestion"),
-        "year": parsed.get("year") or suggested.get("year"),
-        "width_cm": parsed.get("width_cm") or suggested.get("width_cm"),
-        "height_cm": parsed.get("height_cm") or suggested.get("height_cm"),
-        "sale_price": parsed.get("sale_price") or suggested.get("estimated_price_rub"),
-        "edition": parsed.get("edition"),
-        "location": parsed.get("location"),
-        "description": suggested.get("description"),
-        "condition": suggested.get("condition"),
-        "technique_text": parsed.get("technique"),
-        "ai_techniques": suggested.get("techniques") or [],
-        "notes": parsed.get("notes"),
-    }
-    state["merged"] = merged
+    context.user_data["add_state"]["raw_text"] = text
 
     msg = "📋 Превью:\n"
-    msg += f"🎨 Название: {merged['title'] or '—'}\n"
-    msg += f"👤 Художник: {merged['artist_name'] or '—'}\n"
-    msg += f"📅 Год: {merged['year'] or '—'}\n"
-    if merged["ai_techniques"]:
-        msg += f"🖌 Техника: {', '.join(t['name'] for t in merged['ai_techniques'])}\n"
-    if merged.get("technique_text"):
-        msg += f"🖌 (из описания): {merged['technique_text']}\n"
-    if merged["width_cm"] and merged["height_cm"]:
-        msg += f"📐 Размер: {merged['width_cm']} × {merged['height_cm']} см\n"
-    if merged["sale_price"]:
-        msg += f"💰 Цена: {int(float(merged['sale_price'])):,} ₽\n".replace(",", " ")
-    if merged.get("edition"):
-        msg += f"🔢 Тираж: {merged['edition']}\n"
-    if merged.get("location"):
-        msg += f"📍 Локация: {merged['location']}\n"
+    msg += f"🎨 Название: {parsed.get('title') or '—'}\n"
+    msg += f"👤 Художник: {parsed.get('artist_name') or '—'}\n"
+    msg += f"📅 Год: {parsed.get('year') or '—'}\n"
+    if parsed.get("technique"):
+        msg += f"🖌 Техника: {parsed['technique']}\n"
+    if parsed.get("style_period"):
+        msg += f"🎭 Стиль: {parsed['style_period']}\n"
+    if parsed.get("width_cm") and parsed.get("height_cm"):
+        msg += f"📐 Размер: {parsed['width_cm']} × {parsed['height_cm']} см\n"
+    if parsed.get("sale_price"):
+        msg += f"💰 Цена: {int(float(parsed['sale_price'])):,} ₽\n".replace(",", " ")
+    if parsed.get("edition"):
+        msg += f"🔢 Тираж: {parsed['edition']}\n"
+    if parsed.get("location"):
+        msg += f"📍 Локация: {parsed['location']}\n"
+    if parsed.get("description"):
+        msg += f"📝 {parsed['description']}\n"
 
     msg += "\nВсё верно? Да / Нет"
     await update.message.reply_text(msg)
@@ -129,67 +101,86 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     answer = update.message.text.strip().lower()
     if answer not in {"да", "yes", "y", "ок", "ok", "+", "✅"}:
         await update.message.reply_text(
-            "Окей, /add заново когда нужно. (Inline-редактирование пока не сделано.)"
+            "Окей. Пришли голосовое заново или /cancel."
         )
-        context.user_data.clear()
-        return ConversationHandler.END
+        return WAIT_VOICE
 
     state = context.user_data["add_state"]
-    merged = state["merged"]
+    parsed = state.get("parsed", {})
 
-    # Найти/создать художника
-    artist_id = None
-    artist_name = merged.get("artist_name")
-    if artist_name:
-        artists = await crm.list_artists()
-        match = next(
-            (
-                a for a in artists
-                if artist_name.lower() in (a.get("name_ru") or "").lower()
-                or artist_name.lower() in (a.get("name_en") or "").lower()
-            ),
-            None,
-        )
-        if match:
-            artist_id = match["id"]
-        else:
-            new_artist = await crm.create_artist(name_ru=artist_name)
-            artist_id = new_artist["id"]
-            await update.message.reply_text(f"➕ Создан художник: {artist_name}")
-
+    artist_id = await _resolve_artist(parsed.get("artist_name"))
     if not artist_id:
         await update.message.reply_text(
-            "Не получилось определить художника. Назови его одним сообщением:"
+            "Не понял художника. Напиши имя одной строкой:"
         )
-        # Сохраняем превью, ждём имя
-        state["awaiting_artist"] = True
+        state["awaiting_artist_name"] = True
         return CONFIRM
 
-    payload = {
-        "title": merged["title"],
-        "artist_id": artist_id,
-        "year": int(merged["year"]) if merged.get("year") else None,
-        "edition": merged.get("edition"),
-        "description": merged.get("description"),
-        "condition": merged.get("condition"),
-        "location": merged.get("location"),
-        "width_cm": float(merged["width_cm"]) if merged.get("width_cm") else None,
-        "height_cm": float(merged["height_cm"]) if merged.get("height_cm") else None,
-        "sale_price": float(merged["sale_price"]) if merged.get("sale_price") else None,
-        "status": "draft",
-        "technique_ids": [t["id"] for t in merged.get("ai_techniques", [])],
-    }
-    payload = {k: v for k, v in payload.items() if v is not None or k == "technique_ids"}
+    if state.pop("awaiting_artist_name", False):
+        artist_id = await _resolve_artist(update.message.text.strip(), force_create=True)
 
+    technique_ids = await _match_techniques(parsed.get("technique"))
+
+    payload = _build_artwork_payload(parsed, artist_id, technique_ids)
     artwork = await crm.create_artwork(payload)
     await crm.upload_artwork_image(artwork["id"], state["image_bytes"], primary=True)
 
-    # Перечитываем чтобы получить полную карточку
     full = await crm.get_artwork(artwork["id"])
     await update.message.reply_text("✅ Добавлено!\n" + format_artwork_card(full), parse_mode="HTML")
 
     context.user_data.clear()
     return ConversationHandler.END
+
+
+async def _resolve_artist(name: str | None, force_create: bool = False) -> int | None:
+    if not name:
+        return None
+    if not force_create:
+        artists = await crm.list_artists()
+        match = next(
+            (
+                a for a in artists
+                if name.lower() in (a.get("name_ru") or "").lower()
+                or name.lower() in (a.get("name_en") or "").lower()
+            ),
+            None,
+        )
+        if match:
+            return match["id"]
+    new_artist = await crm.create_artist(name_ru=name)
+    return new_artist["id"]
+
+
+async def _match_techniques(technique_text: str | None) -> list[int]:
+    if not technique_text:
+        return []
+    techniques = await crm.list_techniques()
+    text = technique_text.lower()
+    matched = []
+    for t in techniques:
+        name = (t.get("name") or "").lower()
+        # Грубое совпадение: материал или техника попадает в текст
+        words = [w.strip(" ,.") for w in name.split(",")]
+        if any(w and w in text for w in words):
+            matched.append(t["id"])
+    return matched
+
+
+def _build_artwork_payload(parsed: dict, artist_id: int, technique_ids: list[int]) -> dict:
+    payload = {
+        "title": parsed.get("title"),
+        "artist_id": artist_id,
+        "year": int(parsed["year"]) if parsed.get("year") else None,
+        "edition": parsed.get("edition"),
+        "description": parsed.get("description") or parsed.get("notes"),
+        "location": parsed.get("location"),
+        "width_cm": float(parsed["width_cm"]) if parsed.get("width_cm") else None,
+        "height_cm": float(parsed["height_cm"]) if parsed.get("height_cm") else None,
+        "sale_price": float(parsed["sale_price"]) if parsed.get("sale_price") else None,
+        "status": "draft",
+        "technique_ids": technique_ids,
+    }
+    return {k: v for k, v in payload.items() if v is not None or k == "technique_ids"}
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -203,9 +194,9 @@ def build_add_handler() -> ConversationHandler:
         entry_points=[CommandHandler("add", add_start)],
         states={
             WAIT_PHOTO: [MessageHandler(filters.PHOTO, receive_photo)],
-            WAIT_DESCRIPTION: [
-                CommandHandler("skip", skip_description),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_description),
+            WAIT_VOICE: [
+                MessageHandler(filters.VOICE | filters.AUDIO, receive_voice),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, receive_text),
             ],
             CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm)],
         },
