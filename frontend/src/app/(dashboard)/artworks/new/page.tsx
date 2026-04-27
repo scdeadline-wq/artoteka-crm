@@ -3,7 +3,7 @@
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, Sparkles, Loader2, X, Check, Wand2 } from "lucide-react";
+import { Upload, Sparkles, Loader2, X, Check, Wand2, ExternalLink } from "lucide-react";
 import api from "@/lib/api";
 import type { Artist, Technique } from "@/lib/types";
 
@@ -25,12 +25,20 @@ interface AISuggestion {
   confidence: string | null;
 }
 
+interface SearchSource {
+  title: string | null;
+  source: string | null;
+  link: string | null;
+  snippet: string | null;
+}
+
 export default function NewArtworkPage() {
   const router = useRouter();
   const [step, setStep] = useState<Step>("upload");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<AISuggestion | null>(null);
+  const [aiSources, setAiSources] = useState<SearchSource[]>([]);
   const [enhanced, setEnhanced] = useState(false);
 
   const { data: artists = [] } = useQuery<Artist[]>({
@@ -65,10 +73,14 @@ export default function NewArtworkPage() {
       const fd = new FormData();
       fd.append("file", file);
       const { data } = await api.post("/artworks/analyze-image", fd);
-      return data.suggested as AISuggestion;
+      return {
+        suggestion: data.suggested as AISuggestion,
+        sources: (data.sources || []) as SearchSource[],
+      };
     },
-    onSuccess: (suggestion) => {
+    onSuccess: ({ suggestion, sources }) => {
       setAiSuggestion(suggestion);
+      setAiSources(sources);
       // Автозаполнение формы из AI
       setForm((f) => ({
         ...f,
@@ -276,11 +288,41 @@ export default function NewArtworkPage() {
         Новое произведение
       </h1>
       {aiSuggestion?.confidence && (
-        <p className="mb-6 text-sm text-gray-500">
+        <p className="mb-3 text-sm text-gray-500">
           <Sparkles size={14} className="mr-1 inline text-amber-500" />
           AI заполнил карточку (уверенность: {aiSuggestion.confidence}).
           Проверь и поправь если нужно.
         </p>
+      )}
+
+      {aiSources.length > 0 && (
+        <div className="mb-6 rounded-xl border border-blue-100 bg-blue-50 p-4">
+          <p className="mb-2 text-xs font-medium text-blue-900">
+            Найдено в интернете ({aiSources.length}) — атрибуция по этим источникам:
+          </p>
+          <ul className="space-y-1.5">
+            {aiSources.map((src, i) => (
+              <li key={i} className="text-xs text-blue-800">
+                {src.link ? (
+                  <a
+                    href={src.link}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1 hover:underline"
+                  >
+                    <ExternalLink size={10} />
+                    <span className="font-medium">{src.title || src.source || src.link}</span>
+                    {src.source && src.title && (
+                      <span className="text-blue-500">— {src.source}</span>
+                    )}
+                  </a>
+                ) : (
+                  <span>{src.title || src.source}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <form
