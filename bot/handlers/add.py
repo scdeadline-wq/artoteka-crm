@@ -15,7 +15,7 @@ from bot.handlers.auth import require_whitelist
 from bot.handlers.formatters import format_artwork_card
 from bot.services.crm import crm
 from bot.services.parser import parse_description
-from bot.services.whisper import transcribe
+from bot.services.voice_parser import parse_voice
 
 WAIT_PHOTO, WAIT_VOICE, CONFIRM = range(3)
 
@@ -51,27 +51,36 @@ async def receive_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await file.download_to_memory(buf)
     audio_bytes = buf.getvalue()
 
-    await update.message.reply_text("🔄 Транскрибирую...")
-    text = await transcribe(audio_bytes)
-    if not text:
+    await update.message.reply_text("🔄 Распознаю и парсю...")
+    try:
+        parsed = await parse_voice(audio_bytes, audio_format="ogg")
+    except Exception as e:
         await update.message.reply_text(
-            "Не получилось транскрибировать. Whisper-ключ не настроен или ошибка API.\n"
-            "Напиши описание текстом или /cancel"
+            f"Ошибка распознавания: {e}\nНапиши текстом или /cancel"
         )
         return WAIT_VOICE
 
-    await update.message.reply_text(f"📝 Распознал:\n«{text}»")
-    return await _process_text(update, context, text)
+    if not parsed:
+        await update.message.reply_text(
+            "Не получилось распознать. Напиши описание текстом или /cancel"
+        )
+        return WAIT_VOICE
+
+    transcript = parsed.pop("transcript", "") if isinstance(parsed, dict) else ""
+    if transcript:
+        await update.message.reply_text(f"📝 Распознал:\n«{transcript}»")
+
+    return await _show_preview(update, context, parsed)
 
 
 async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    return await _process_text(update, context, update.message.text.strip())
-
-
-async def _process_text(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str):
+    text = update.message.text.strip()
     parsed = await parse_description(text)
+    return await _show_preview(update, context, parsed)
+
+
+async def _show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE, parsed: dict):
     context.user_data["add_state"]["parsed"] = parsed
-    context.user_data["add_state"]["raw_text"] = text
 
     msg = "📋 Превью:\n"
     msg += f"🎨 Название: {parsed.get('title') or '—'}\n"

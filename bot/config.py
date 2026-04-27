@@ -9,13 +9,9 @@ class BotSettings(BaseSettings):
     crm_user_email: str = ""
     crm_user_password: str = ""
 
-    # OpenRouter (тот же что у backend) для парсинга описаний
+    # OpenRouter (тот же что у backend): Claude для текста, gpt-audio для голоса
     openrouter_api_key: str = ""
     parse_model: str = "anthropic/claude-sonnet-4.6"
-
-    # Whisper транскрипция (OpenAI)
-    openai_api_key: str = ""
-    whisper_model: str = "whisper-1"
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 
