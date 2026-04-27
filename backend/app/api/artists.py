@@ -35,7 +35,7 @@ async def create_artist(
     return artist
 
 
-@router.get("/{artist_id}", response_model=ArtistOut)
+@router.get("/{artist_id}/", response_model=ArtistOut)
 async def get_artist(
     artist_id: int,
     db: AsyncSession = Depends(get_db),
@@ -47,7 +47,7 @@ async def get_artist(
     return artist
 
 
-@router.put("/{artist_id}", response_model=ArtistOut)
+@router.put("/{artist_id}/", response_model=ArtistOut)
 async def update_artist(
     artist_id: int,
     body: ArtistUpdate,

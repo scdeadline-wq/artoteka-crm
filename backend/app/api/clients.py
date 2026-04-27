@@ -48,7 +48,7 @@ async def create_client(
     return (await db.execute(stmt)).scalar_one()
 
 
-@router.get("/{client_id}", response_model=ClientOut)
+@router.get("/{client_id}/", response_model=ClientOut)
 async def get_client(
     client_id: int,
     db: AsyncSession = Depends(get_db),
@@ -61,7 +61,7 @@ async def get_client(
     return client
 
 
-@router.put("/{client_id}", response_model=ClientOut)
+@router.put("/{client_id}/", response_model=ClientOut)
 async def update_client(
     client_id: int,
     body: ClientUpdate,

@@ -105,7 +105,7 @@ async def create_artwork(
     return artwork
 
 
-@router.get("/{artwork_id}", response_model=ArtworkOut)
+@router.get("/{artwork_id}/", response_model=ArtworkOut)
 async def get_artwork(
     artwork_id: int,
     db: AsyncSession = Depends(get_db),
@@ -126,7 +126,7 @@ async def get_artwork(
     return artwork
 
 
-@router.put("/{artwork_id}", response_model=ArtworkOut)
+@router.put("/{artwork_id}/", response_model=ArtworkOut)
 async def update_artwork(
     artwork_id: int,
     body: ArtworkUpdate,
@@ -164,7 +164,7 @@ async def update_artwork(
     return artwork
 
 
-@router.post("/analyze-image")
+@router.post("/analyze-image/")
 async def analyze_image(
     file: UploadFile = File(...),
     _: User = Depends(get_current_user),
@@ -236,7 +236,7 @@ def _parse_year(year_str: str | None) -> int | None:
     return int(digits[:4]) if len(digits) >= 4 else None
 
 
-@router.patch("/{artwork_id}/status")
+@router.patch("/{artwork_id}/status/")
 async def change_status(
     artwork_id: int,
     status: str,
@@ -251,7 +251,7 @@ async def change_status(
     return {"ok": True, "status": status}
 
 
-@router.post("/{artwork_id}/images")
+@router.post("/{artwork_id}/images/")
 async def upload_artwork_image(
     artwork_id: int,
     file: UploadFile = File(...),
@@ -271,7 +271,7 @@ async def upload_artwork_image(
     return {"id": image.id, "url": image.url}
 
 
-@router.post("/enhance-image")
+@router.post("/enhance-image/")
 async def enhance_image_endpoint(
     file: UploadFile = File(...),
     crop: bool = True,
@@ -292,7 +292,7 @@ async def enhance_image_endpoint(
     )
 
 
-@router.get("/{artwork_id}/mockup")
+@router.get("/{artwork_id}/mockup/")
 async def get_mockup(
     artwork_id: int,
     style: str = "office",
@@ -351,7 +351,7 @@ async def get_mockup(
     )
 
 
-@router.post("/{artwork_id}/custom-mockup")
+@router.post("/{artwork_id}/custom-mockup/")
 async def custom_mockup(
     artwork_id: int,
     room_photo: UploadFile = File(...),
@@ -418,7 +418,7 @@ async def custom_mockup(
     }
 
 
-@router.get("/mockups/history")
+@router.get("/mockups/history/")
 async def mockup_history(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
