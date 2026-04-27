@@ -32,16 +32,15 @@ FINAL_TOP_RESULTS = 8
 
 SEARCH_SUPPORTED_FORMATS = {"JPEG", "PNG", "WEBP", "GIF", "BMP"}
 
-# Доменные суффиксы которые не несут пользы для атрибуции (постеры/принты/маркетплейсы)
-NOISE_DOMAINS = {
-    "amazon.com", "amazon.de", "amazon.co.uk", "amazon.fr", "amazon.it",
-    "ebay.com", "ebay.co.uk", "ebay.de",
-    "aliexpress.com", "aliexpress.ru",
-    "etsy.com",
-    "pinterest.com", "pinterest.ru", "pinterest.co.uk",
-    "ozon.ru", "wildberries.ru",
+# Корневые имена доменов которые не несут пользы для атрибуции
+# (маркетплейсы, постер-принты, стоки, доски настроения).
+# Сравниваем как `domain == X or domain.endswith('.' + X)` чтобы покрыть все TLD.
+NOISE_DOMAIN_ROOTS = {
+    "amazon", "ebay", "aliexpress", "etsy", "pinterest",
+    "ozon.ru", "wildberries.ru", "joom.com", "kupit-online.com",
     "redbubble.com", "society6.com", "zazzle.com", "fineartamerica.com",
     "shutterstock.com", "istockphoto.com", "alamy.com", "dreamstime.com",
+    "depositphotos.com", "gettyimages.com", "123rf.com",
 }
 
 
@@ -162,7 +161,7 @@ def _merge_and_filter(google: list[dict], yandex: list[dict]) -> list[dict]:
 
             if not (link or title):
                 continue
-            if domain in NOISE_DOMAINS:
+            if _is_noise(domain):
                 continue
 
             dedupe_key = (domain, title.lower()[:80])
@@ -186,3 +185,22 @@ def _extract_domain(url: str) -> str:
         return host[4:] if host.startswith("www.") else host
     except Exception:
         return ""
+
+
+def _is_noise(domain: str) -> bool:
+    """True если домен входит в noise-список или его поддомен.
+
+    Покрывает 'amazon.com', 'amazon.de', 'pinterest.at', 'm.amazon.co.uk' и т.п.
+    """
+    if not domain:
+        return False
+    parts = domain.split(".")
+    for i in range(len(parts)):
+        suffix = ".".join(parts[i:])
+        # точное совпадение для doменов с TLD ('amazon.com' — нет в списке) или
+        # совпадение по корню ('amazon' — есть в списке)
+        if suffix in NOISE_DOMAIN_ROOTS:
+            return True
+        # отдельная проверка для 'amazon' — без TLD: domain типа 'amazon.de' даст
+        # parts ['amazon', 'de'], нужно проверить что parts[0] в roots
+    return parts[0] in NOISE_DOMAIN_ROOTS
