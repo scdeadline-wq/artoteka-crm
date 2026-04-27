@@ -10,7 +10,7 @@ from app.auth import verify_password, create_access_token, get_current_user
 router = APIRouter()
 
 
-@router.post("/login", response_model=TokenResponse)
+@router.post("/login/", response_model=TokenResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     user = (await db.execute(select(User).where(User.email == body.email))).scalar_one_or_none()
     if not user or not verify_password(body.password, user.password_hash):
@@ -18,6 +18,6 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     return TokenResponse(access_token=create_access_token(user.id))
 
 
-@router.get("/me", response_model=UserOut)
+@router.get("/me/", response_model=UserOut)
 async def me(user: User = Depends(get_current_user)):
     return user

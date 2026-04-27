@@ -11,7 +11,7 @@ from app.models import Sale, Artwork, ArtworkStatus, Artist, User
 router = APIRouter()
 
 
-@router.get("/summary")
+@router.get("/summary/")
 async def summary(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
@@ -53,7 +53,7 @@ async def summary(
     }
 
 
-@router.get("/top-artists")
+@router.get("/top-artists/")
 async def top_artists(
     limit: int = 10,
     db: AsyncSession = Depends(get_db),
