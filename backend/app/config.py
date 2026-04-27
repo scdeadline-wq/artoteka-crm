@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     ai_model: str = "google/gemini-2.0-flash-001"
     mockup_model: str = "openai/gpt-5-image"
 
+    # Web search (SearchAPI.io — Yandex reverse image)
+    searchapi_key: str = ""
+    public_base_url: str = "http://185.152.94.51:8000"
+
     # Telegram
     telegram_bot_token: str = ""
 

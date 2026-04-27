@@ -200,6 +200,7 @@ async def analyze_image(
 
     return {
         "ai_raw": ai_result,
+        "sources": ai_result.get("_sources") or [],
         "suggested": {
             "title": ai_result.get("title"),
             "artist": artist_match,
