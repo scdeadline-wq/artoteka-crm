@@ -113,6 +113,97 @@ async def _translate_batch(items: list[dict]) -> list[dict]:
     return json.loads(content)
 
 
+BIO_PROMPT = """Ты заполняешь биографии художников для каталога галереи.
+
+Я дам JSON с русским и английским именем. Для каждого художника верни короткую биографию на русском (3-5 предложений): годы жизни, школа или направление, основной стиль, известные работы / достижения / музейные коллекции.
+
+ЖЁСТКИЕ ПРАВИЛА:
+- Заполняй ТОЛЬКО если ты ТОЧНО знаешь художника (Wikipedia, artchive, gallerix, музейные коллекции, известные аукционы).
+- Если не уверен или не знаешь — bio: null. НЕ ВЫДУМЫВАЙ.
+- Не пиши «возможно», «вероятно», «по некоторым данным», «(предположительно)».
+- Не пиши воду: «известный художник», «талантливый мастер», «значимый автор» — только конкретика.
+- Не повторяй имя в начале bio (его и так видно).
+
+Верни ТОЛЬКО JSON-массив (никакого markdown, комментариев):
+[{"id": 1, "bio": "..."}, {"id": 2, "bio": null}, ...]
+"""
+
+
+async def _fill_bio_batch(items: list[dict]) -> list[dict]:
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        r = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.openrouter_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": settings.ai_model,
+                "messages": [
+                    {"role": "system", "content": BIO_PROMPT},
+                    {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
+                ],
+                "max_tokens": 6000,
+            },
+        )
+        r.raise_for_status()
+        content = r.json()["choices"][0]["message"]["content"].strip()
+    if content.startswith("```"):
+        content = content.split("\n", 1)[1].rsplit("```", 1)[0]
+    return json.loads(content)
+
+
+@router.post("/fill-bios/")
+async def fill_bios(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> dict:
+    """Заполняет bio через Claude у всех артистов с пустым bio."""
+    if not settings.openrouter_api_key:
+        raise HTTPException(status_code=500, detail="OpenRouter not configured")
+
+    artists = (await db.execute(
+        select(Artist).where(or_(Artist.bio.is_(None), Artist.bio == ""))
+    )).scalars().all()
+
+    if not artists:
+        return {"updated": 0, "skipped_unknown": 0, "total_pending": 0}
+
+    by_id = {a.id: a for a in artists}
+    items = [
+        {"id": a.id, "name_ru": a.name_ru, "name_en": a.name_en or None}
+        for a in artists
+    ]
+
+    updated = 0
+    skipped = 0
+    BATCH = 20
+    for i in range(0, len(items), BATCH):
+        batch = items[i:i + BATCH]
+        try:
+            results = await _fill_bio_batch(batch)
+        except Exception as e:
+            log.exception("bio batch failed: %s", e)
+            continue
+        for r in results:
+            artist = by_id.get(r.get("id"))
+            if not artist:
+                continue
+            bio = r.get("bio")
+            if bio:
+                artist.bio = bio.strip()
+                updated += 1
+            else:
+                skipped += 1
+        await db.commit()
+
+    return {
+        "updated": updated,
+        "skipped_unknown": skipped,
+        "total_pending": len(items),
+    }
+
+
 @router.post("/translate-names/")
 async def translate_names(
     db: AsyncSession = Depends(get_db),
