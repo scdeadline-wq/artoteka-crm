@@ -141,11 +141,12 @@ async def _import_record(
         return
 
     author_names = fields.get(F_AUTHOR_LOOKUP, [])
-    if not author_names:
-        counters["skipped_no_artist"] += 1
-        log.warning("Skip artikul=%s: no artist", inventory)
-        return
-    artist = await _get_or_create_artist(db, author_names[0], artist_cache)
+    if author_names:
+        artist_name = author_names[0]
+    else:
+        artist_name = "Неизвестный автор"
+        counters["fallback_artist"] += 1
+    artist = await _get_or_create_artist(db, artist_name, artist_cache)
 
     title = fields.get(F_NAME) or "Без названия"
     width, height = parse_size(fields.get(F_SIZE))
@@ -242,7 +243,7 @@ async def run_full_import(db: AsyncSession) -> dict:
         "framing_files": 0,
         "attachment_errors": 0,
         "skipped_no_artikul": 0,
-        "skipped_no_artist": 0,
+        "fallback_artist": 0,
     }
 
     for i, rec in enumerate(records, 1):
