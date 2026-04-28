@@ -116,6 +116,22 @@ class CRMClient:
         response.raise_for_status()
         return response.json()
 
+    async def download_image(self, image_url: str) -> bytes:
+        """Скачивает байты из CRM по относительному /images/-пути.
+
+        Вход — то, что лежит в Image.url или primary_image (например
+        '/images/artworks/12/abc.jpg'). Идём через внутренний docker URL
+        backend, поэтому фаервол/гео-блоки не страшны.
+        """
+        path = image_url.lstrip("/")
+        token = await self._ensure_token()
+        response = await self._client.get(
+            f"/{path}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        response.raise_for_status()
+        return response.content
+
     async def list_techniques(self) -> list[dict[str, Any]]:
         response = await self._request("GET", "/techniques/")
         response.raise_for_status()

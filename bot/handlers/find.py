@@ -1,3 +1,5 @@
+from io import BytesIO
+
 from telegram import Update, InputMediaPhoto
 from telegram.ext import (
     ContextTypes,
@@ -7,7 +9,6 @@ from telegram.ext import (
     filters,
 )
 
-from bot.config import settings
 from bot.handlers.auth import require_whitelist
 from bot.handlers.formatters import format_artwork_card
 from bot.handlers.keyboard import BTN_FIND
@@ -48,21 +49,29 @@ async def _do_search(update: Update, query: str) -> None:
         await update.message.reply_text(f"Нашёл {len(filtered)} работ — показываю первые 5:")
         filtered = filtered[:5]
 
-    public = settings.crm_public_url.rstrip("/")
     for artwork in filtered:
         caption = format_artwork_card(artwork)
         full = await crm.get_artwork(artwork["id"])
         images = sorted(full.get("images") or [], key=lambda i: (not i.get("is_primary"), i.get("sort_order", 0)))
-        urls = [f"{public}{img['url']}" for img in images if img.get("url")]
+
+        photo_blobs: list[bytes] = []
+        for img in images[:10]:
+            url = img.get("url")
+            if not url:
+                continue
+            try:
+                photo_blobs.append(await crm.download_image(url))
+            except Exception:
+                continue
 
         try:
-            if len(urls) >= 2:
-                media = [InputMediaPhoto(media=urls[0], caption=caption, parse_mode="HTML")]
-                media += [InputMediaPhoto(media=u) for u in urls[1:10]]
+            if len(photo_blobs) >= 2:
+                media = [InputMediaPhoto(media=BytesIO(photo_blobs[0]), caption=caption, parse_mode="HTML")]
+                media += [InputMediaPhoto(media=BytesIO(b)) for b in photo_blobs[1:]]
                 await update.message.reply_media_group(media=media)
                 continue
-            if len(urls) == 1:
-                await update.message.reply_photo(photo=urls[0], caption=caption, parse_mode="HTML")
+            if len(photo_blobs) == 1:
+                await update.message.reply_photo(photo=BytesIO(photo_blobs[0]), caption=caption, parse_mode="HTML")
                 continue
         except Exception:
             pass
