@@ -115,16 +115,46 @@ async def _translate_batch(items: list[dict]) -> list[dict]:
 
 BIO_PROMPT = """Ты заполняешь биографии художников для каталога галереи.
 
-Я дам JSON с русским и английским именем. Для каждого художника верни короткую биографию на русском (3-5 предложений): годы жизни, школа или направление, основной стиль, известные работы / достижения / музейные коллекции.
+Я дам JSON с русским и английским именем. Для каждого художника верни биографию на русском.
 
-ЖЁСТКИЕ ПРАВИЛА:
-- Заполняй ТОЛЬКО если ты ТОЧНО знаешь художника (Wikipedia, artchive, gallerix, музейные коллекции, известные аукционы).
-- Если не уверен или не знаешь — bio: null. НЕ ВЫДУМЫВАЙ.
-- Не пиши «возможно», «вероятно», «по некоторым данным», «(предположительно)».
-- Не пиши воду: «известный художник», «талантливый мастер», «значимый автор» — только конкретика.
-- Не повторяй имя в начале bio (его и так видно).
+Что писать:
+- Годы жизни / даты рождения
+- Учебное заведение, школа, направление
+- Стиль / творческая манера
+- Известные работы, выставки, музейные коллекции, награды
+- Связи с другими художниками или арт-движениями
 
-Верни ТОЛЬКО JSON-массив (никакого markdown, комментариев):
+Когда писать:
+- Если знаешь хотя бы 2-3 КОНКРЕТНЫХ факта — пиши, даже коротко (2-3 предложения), это полезно для каталога.
+- Если ничего конкретного не знаешь и пришлось бы выдумывать — bio: null.
+
+Чего НЕ делать:
+- НЕ выдумывай конкретные даты, названия работ, биографические факты.
+- НЕ пиши «возможно», «вероятно», «по некоторым данным», «(предположительно)».
+- НЕ пиши воду без конкретики: «известный художник», «талантливый мастер», «значимый автор».
+- НЕ повторяй имя в начале bio.
+
+Верни ТОЛЬКО JSON-массив (никакого markdown):
+[{"id": 1, "bio": "..."}, {"id": 2, "bio": null}, ...]
+"""
+
+ENRICH_BIO_PROMPT = """Ты заполняешь биографии художников по результатам веб-поиска.
+
+Тебе дадут JSON: для каждого художника — имя и сниппеты (заголовок + текст) из поисковика.
+На основе этих сниппетов напиши биографию на русском (2-4 предложения):
+- Годы жизни / годы творчества
+- Школа, направление, стиль
+- Известные работы, выставки, коллекции
+- Связи с движениями
+
+Правила:
+- Опирайся ТОЛЬКО на сниппеты. Не добавляй фактов от себя.
+- Если в сниппетах нет информации о конкретном художнике (поиск нашёл что-то другое) — bio: null.
+- Если сниппеты противоречат друг другу — выбирай согласованную версию или null.
+- Не пиши «согласно поиску», «по данным интернета», «возможно».
+- Не повторяй имя в начале bio.
+
+Верни ТОЛЬКО JSON-массив:
 [{"id": 1, "bio": "..."}, {"id": 2, "bio": null}, ...]
 """
 
@@ -201,6 +231,128 @@ async def fill_bios(
         "updated": updated,
         "skipped_unknown": skipped,
         "total_pending": len(items),
+    }
+
+
+SEARCHAPI_TEXT_URL = "https://www.searchapi.io/api/v1/search"
+
+
+async def _text_search(query: str) -> list[dict]:
+    """Поиск в Google через SearchAPI.io. Возвращает organic_results (top 5)."""
+    if not settings.searchapi_key:
+        return []
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        try:
+            r = await client.get(
+                SEARCHAPI_TEXT_URL,
+                params={
+                    "engine": "google",
+                    "q": query,
+                    "api_key": settings.searchapi_key,
+                    "num": 5,
+                },
+            )
+            r.raise_for_status()
+            data = r.json()
+        except Exception as e:
+            log.warning("text search failed for %r: %s", query, e)
+            return []
+    return [
+        {"title": x.get("title"), "snippet": x.get("snippet"), "source": x.get("displayed_link")}
+        for x in (data.get("organic_results") or [])[:5]
+    ]
+
+
+async def _search_artist_snippets(artist: Artist) -> list[dict]:
+    """Сниппеты для одного артиста: имя + 'художник биография'."""
+    name = artist.name_ru.strip()
+    return await _text_search(f"{name} художник биография")
+
+
+@router.post("/enrich-bios-with-search/")
+async def enrich_bios_with_search(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> dict:
+    """Для всех артистов с пустым bio: делает Google-поиск, отдаёт сниппеты Claude."""
+    if not settings.openrouter_api_key:
+        raise HTTPException(status_code=500, detail="OpenRouter not configured")
+    if not settings.searchapi_key:
+        raise HTTPException(status_code=500, detail="SearchAPI not configured")
+
+    artists = (await db.execute(
+        select(Artist).where(or_(Artist.bio.is_(None), Artist.bio == ""))
+    )).scalars().all()
+    if not artists:
+        return {"updated": 0, "no_results": 0, "total_pending": 0}
+
+    # Параллельный поиск (по 5 одновременно)
+    import asyncio
+    semaphore = asyncio.Semaphore(5)
+
+    async def fetch(a: Artist) -> tuple[Artist, list[dict]]:
+        async with semaphore:
+            return a, await _search_artist_snippets(a)
+
+    pairs = await asyncio.gather(*(fetch(a) for a in artists))
+
+    # В Claude отправляем только тех, для кого есть сниппеты
+    items = []
+    no_results = 0
+    for artist, snippets in pairs:
+        if not snippets:
+            no_results += 1
+            continue
+        items.append({
+            "id": artist.id,
+            "name_ru": artist.name_ru,
+            "name_en": artist.name_en,
+            "snippets": snippets,
+        })
+
+    by_id = {a.id: a for a in artists}
+    updated = 0
+    BATCH = 10
+    for i in range(0, len(items), BATCH):
+        batch = items[i:i + BATCH]
+        try:
+            async with httpx.AsyncClient(timeout=240.0) as client:
+                r = await client.post(
+                    "https://openrouter.ai/api/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.openrouter_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": settings.ai_model,
+                        "messages": [
+                            {"role": "system", "content": ENRICH_BIO_PROMPT},
+                            {"role": "user", "content": json.dumps(batch, ensure_ascii=False)},
+                        ],
+                        "max_tokens": 6000,
+                    },
+                )
+                r.raise_for_status()
+                content = r.json()["choices"][0]["message"]["content"].strip()
+            if content.startswith("```"):
+                content = content.split("\n", 1)[1].rsplit("```", 1)[0]
+            results = json.loads(content)
+        except Exception as e:
+            log.exception("enrich batch failed: %s", e)
+            continue
+        for r in results:
+            artist = by_id.get(r.get("id"))
+            bio = (r.get("bio") or "").strip()
+            if artist and bio:
+                artist.bio = bio
+                updated += 1
+        await db.commit()
+
+    return {
+        "updated": updated,
+        "no_results": no_results,
+        "total_pending": len(artists),
+        "snippets_found": len(items),
     }
 
 
