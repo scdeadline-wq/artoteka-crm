@@ -1,13 +1,19 @@
+import json
+import logging
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.database import get_db
 from app.auth import get_current_user
 from app.models import Artist, User
 from app.schemas.artist import ArtistCreate, ArtistUpdate, ArtistOut
 
 router = APIRouter()
+log = logging.getLogger(__name__)
 
 
 @router.get("/", response_model=list[ArtistOut])
@@ -62,3 +68,82 @@ async def update_artist(
     await db.commit()
     await db.refresh(artist)
     return artist
+
+
+TRANSLATE_PROMPT = """Ты переводишь имена художников с русского на английский для каталога галереи.
+
+Правила:
+- Известный художник (есть в Wikipedia) → официальное английское имя как в Wikipedia (например «Дмитрий Пригов» → «Dmitri Prigov», «Пабло Пикассо» → «Pablo Picasso», «Виктор Пивоваров» → «Viktor Pivovarov»).
+- Малоизвестный → стандартная транслитерация (BGN/PCGN). Русские отчества опускай.
+- Уже на латинице (например «Dariel D.») → возвращай как есть.
+- Скобки сохраняй: «Алексей Смирнов (фон Раух)» → «Aleksey Smirnov (von Rauch)».
+- Запись с запятой (группа авторов) — переводи каждое имя, запятую сохрани: «Andrey Monastyrsky, Vladimir Zakharov».
+- «Неизвестный автор» → «Unknown artist».
+- НЕ выдумывай. Если не уверен в Wikipedia-варианте — просто транслитерируй.
+
+Верни ТОЛЬКО JSON-массив (никаких комментариев и markdown):
+[{"id": 1, "name_en": "..."}, ...]
+"""
+
+
+async def _translate_batch(items: list[dict]) -> list[dict]:
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        r = await client.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {settings.openrouter_api_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": settings.ai_model,
+                "messages": [
+                    {"role": "system", "content": TRANSLATE_PROMPT},
+                    {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
+                ],
+                "max_tokens": 4000,
+            },
+        )
+        r.raise_for_status()
+        content = r.json()["choices"][0]["message"]["content"].strip()
+    if content.startswith("```"):
+        content = content.split("\n", 1)[1].rsplit("```", 1)[0]
+    return json.loads(content)
+
+
+@router.post("/translate-names/")
+async def translate_names(
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+) -> dict:
+    """Заполняет name_en у всех артистов с пустым английским именем (через Claude)."""
+    if not settings.openrouter_api_key:
+        raise HTTPException(status_code=500, detail="OpenRouter not configured")
+
+    artists = (await db.execute(
+        select(Artist).where(or_(Artist.name_en.is_(None), Artist.name_en == ""))
+    )).scalars().all()
+
+    if not artists:
+        return {"updated": 0, "total_pending": 0}
+
+    by_id = {a.id: a for a in artists}
+    items = [{"id": a.id, "name_ru": a.name_ru} for a in artists]
+
+    updated = 0
+    BATCH = 30
+    for i in range(0, len(items), BATCH):
+        batch = items[i:i + BATCH]
+        try:
+            results = await _translate_batch(batch)
+        except Exception as e:
+            log.exception("translate batch failed: %s", e)
+            continue
+        for r in results:
+            artist = by_id.get(r.get("id"))
+            name_en = (r.get("name_en") or "").strip()
+            if artist and name_en:
+                artist.name_en = name_en
+                updated += 1
+        await db.commit()
+
+    return {"updated": updated, "total_pending": len(items)}
