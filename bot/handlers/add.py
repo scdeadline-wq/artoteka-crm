@@ -13,6 +13,7 @@ from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, Comm
 
 from bot.handlers.auth import require_whitelist
 from bot.handlers.formatters import format_artwork_card
+from bot.handlers.keyboard import BTN_ADD
 from bot.services.crm import crm
 from bot.services.parser import parse_description
 from bot.services.voice_parser import parse_voice
@@ -208,7 +209,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def build_add_handler() -> ConversationHandler:
     return ConversationHandler(
-        entry_points=[CommandHandler("add", add_start)],
+        entry_points=[
+            CommandHandler("add", add_start),
+            MessageHandler(filters.Regex(rf"^{BTN_ADD}$"), add_start),
+        ],
         states={
             WAIT_PHOTO: [MessageHandler(filters.PHOTO, receive_photo)],
             WAIT_VOICE: [
@@ -218,4 +222,5 @@ def build_add_handler() -> ConversationHandler:
             CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,
     )

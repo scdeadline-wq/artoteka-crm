@@ -3,6 +3,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, CommandHandler, filters
 
 from bot.handlers.auth import require_whitelist
+from bot.handlers.keyboard import BTN_CLIENT
 from bot.services.crm import crm
 
 NAME, PHONE, EMAIL, DESCRIPTION = range(4)
@@ -78,7 +79,10 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def build_client_handler() -> ConversationHandler:
     return ConversationHandler(
-        entry_points=[CommandHandler("client", client_start)],
+        entry_points=[
+            CommandHandler("client", client_start),
+            MessageHandler(filters.Regex(rf"^{BTN_CLIENT}$"), client_start),
+        ],
         states={
             NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
             PHONE: [
@@ -95,4 +99,5 @@ def build_client_handler() -> ConversationHandler:
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,
     )

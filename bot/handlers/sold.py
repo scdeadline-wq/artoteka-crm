@@ -4,28 +4,23 @@ from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, Comm
 
 from bot.handlers.auth import require_whitelist
 from bot.handlers.formatters import format_artwork_card
+from bot.handlers.keyboard import BTN_SOLD
 from bot.services.crm import crm
 
-CHOOSE_BUYER, ENTER_NEW_CLIENT, ENTER_PRICE = range(3)
+ASK_INV, CHOOSE_BUYER, ENTER_NEW_CLIENT, ENTER_PRICE = range(4)
 
 
-@require_whitelist
-async def sold_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    args = context.args or []
-    if not args:
-        await update.message.reply_text("Использование: /sold <номер_работы>")
-        return ConversationHandler.END
-
-    inv = args[0].lstrip("№#")
+async def _enter_sold_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, inv: str) -> int:
+    inv = inv.lstrip("№#").strip()
     if not inv.isdigit():
-        await update.message.reply_text("Номер должен быть цифрой")
-        return ConversationHandler.END
+        await update.message.reply_text("Номер должен быть цифрой. Попробуй ещё раз или /cancel.")
+        return ASK_INV
 
     artworks = await crm.search_artworks()
     artwork = next((a for a in artworks if str(a.get("inventory_number")) == inv), None)
     if not artwork:
-        await update.message.reply_text(f"Работа № {inv} не найдена")
-        return ConversationHandler.END
+        await update.message.reply_text(f"Работа № {inv} не найдена. Введи другой номер или /cancel.")
+        return ASK_INV
 
     context.user_data["sold_artwork"] = artwork
     clients = await crm.list_clients()
@@ -42,6 +37,19 @@ async def sold_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(msg, parse_mode="HTML")
     return CHOOSE_BUYER
+
+
+@require_whitelist
+async def sold_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    args = context.args or []
+    if args:
+        return await _enter_sold_flow(update, context, args[0])
+    await update.message.reply_text("Номер работы?")
+    return ASK_INV
+
+
+async def receive_inv(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    return await _enter_sold_flow(update, context, update.message.text or "")
 
 
 async def choose_buyer(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -118,8 +126,12 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def build_sold_handler() -> ConversationHandler:
     return ConversationHandler(
-        entry_points=[CommandHandler("sold", sold_start)],
+        entry_points=[
+            CommandHandler("sold", sold_start),
+            MessageHandler(filters.Regex(rf"^{BTN_SOLD}$"), sold_start),
+        ],
         states={
+            ASK_INV: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_inv)],
             CHOOSE_BUYER: [
                 CommandHandler("skip", skip_buyer),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, choose_buyer),
@@ -127,4 +139,5 @@ def build_sold_handler() -> ConversationHandler:
             ENTER_PRICE: [MessageHandler(filters.TEXT & ~filters.COMMAND, enter_price)],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
+        allow_reentry=True,
     )
