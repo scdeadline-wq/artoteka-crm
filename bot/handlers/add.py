@@ -130,6 +130,12 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         artist_id = await _resolve_artist(update.message.text.strip(), force_create=True)
 
     technique_ids = await _match_techniques(parsed.get("technique"))
+    if parsed.get("technique") and not technique_ids:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Не сматчили технику для распознанного '%s' (parsed: %s)",
+            parsed.get("technique"), parsed,
+        )
 
     payload = _build_artwork_payload(parsed, artist_id, technique_ids)
     artwork = await crm.create_artwork(payload)

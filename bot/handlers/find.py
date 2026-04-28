@@ -50,8 +50,8 @@ async def _do_search(update: Update, query: str) -> None:
         filtered = filtered[:5]
 
     for artwork in filtered:
-        caption = format_artwork_card(artwork)
         full = await crm.get_artwork(artwork["id"])
+        caption = format_artwork_card(full)
         images = sorted(full.get("images") or [], key=lambda i: (not i.get("is_primary"), i.get("sort_order", 0)))
 
         photo_blobs: list[bytes] = []

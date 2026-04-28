@@ -73,6 +73,8 @@ async def list_artworks(
             sale_price=aw.sale_price,
             primary_image=primary,
             year=aw.year,
+            width_cm=float(aw.width_cm) if aw.width_cm is not None else None,
+            height_cm=float(aw.height_cm) if aw.height_cm is not None else None,
         ))
     return out
 
