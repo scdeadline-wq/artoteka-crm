@@ -1,4 +1,4 @@
-from telegram import Update
+from telegram import Update, InputMediaPhoto
 from telegram.ext import (
     ContextTypes,
     ConversationHandler,
@@ -48,19 +48,24 @@ async def _do_search(update: Update, query: str) -> None:
         await update.message.reply_text(f"Нашёл {len(filtered)} работ — показываю первые 5:")
         filtered = filtered[:5]
 
+    public = settings.crm_public_url.rstrip("/")
     for artwork in filtered:
         caption = format_artwork_card(artwork)
-        primary = artwork.get("primary_image")
-        if primary:
-            try:
-                await update.message.reply_photo(
-                    photo=f"{settings.crm_public_url.rstrip('/')}{primary}",
-                    caption=caption,
-                    parse_mode="HTML",
-                )
+        full = await crm.get_artwork(artwork["id"])
+        images = sorted(full.get("images") or [], key=lambda i: (not i.get("is_primary"), i.get("sort_order", 0)))
+        urls = [f"{public}{img['url']}" for img in images if img.get("url")]
+
+        try:
+            if len(urls) >= 2:
+                media = [InputMediaPhoto(media=urls[0], caption=caption, parse_mode="HTML")]
+                media += [InputMediaPhoto(media=u) for u in urls[1:10]]
+                await update.message.reply_media_group(media=media)
                 continue
-            except Exception:
-                pass
+            if len(urls) == 1:
+                await update.message.reply_photo(photo=urls[0], caption=caption, parse_mode="HTML")
+                continue
+        except Exception:
+            pass
         await update.message.reply_text(caption, parse_mode="HTML")
 
 
