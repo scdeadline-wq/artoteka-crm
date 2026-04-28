@@ -54,6 +54,7 @@ class Artwork(Base):
     artist: Mapped["Artist"] = relationship(back_populates="artworks")
     techniques: Mapped[list["Technique"]] = relationship(secondary=artwork_techniques)
     images: Mapped[list["Image"]] = relationship(back_populates="artwork", cascade="all, delete-orphan")
+    attachments: Mapped[list["ArtworkAttachment"]] = relationship(back_populates="artwork", cascade="all, delete-orphan")
 
 
 class Image(Base):

@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     # Telegram
     telegram_bot_token: str = ""
 
+    # Airtable (read-only импорт каталога П. Давтяна)
+    airtable_token: str = ""
+    airtable_base_id: str = "applZNtWrs3z6dcHy"
+    airtable_artworks_table: str = "tblw8RwQZv7IMa7e5"
+    airtable_artists_table: str = "tblfCU3I2nCkuQy1r"
+
     model_config = {"env_file": "../../.env", "extra": "ignore"}
 
 
