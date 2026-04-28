@@ -6,7 +6,7 @@ import Link from "next/link";
 import { Plus, Search } from "lucide-react";
 import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
-import type { ArtworkListItem } from "@/lib/types";
+import type { ArtworkListItem, Artist, Technique } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -21,14 +21,47 @@ const STATUS_COLORS: Record<string, string> = {
 export default function ArtworksPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [artistFilter, setArtistFilter] = useState("");
+  const [techniqueFilter, setTechniqueFilter] = useState("");
+  const [yearFrom, setYearFrom] = useState("");
+  const [yearTo, setYearTo] = useState("");
+
+  const { data: artists = [] } = useQuery<Artist[]>({
+    queryKey: ["artists-for-filter"],
+    queryFn: () => api.get("/artists").then((r) => r.data),
+  });
+  const { data: techniques = [] } = useQuery<Technique[]>({
+    queryKey: ["techniques-for-filter"],
+    queryFn: () => api.get("/techniques").then((r) => r.data),
+  });
 
   const { data: artworks = [], isLoading } = useQuery<ArtworkListItem[]>({
-    queryKey: ["artworks", search, statusFilter],
+    queryKey: ["artworks", search, statusFilter, artistFilter, techniqueFilter, yearFrom, yearTo],
     queryFn: () =>
       api
-        .get("/artworks", { params: { q: search || undefined, status: statusFilter || undefined } })
+        .get("/artworks", {
+          params: {
+            q: search || undefined,
+            status: statusFilter || undefined,
+            artist_id: artistFilter || undefined,
+            technique_id: techniqueFilter || undefined,
+            year_from: yearFrom || undefined,
+            year_to: yearTo || undefined,
+          },
+        })
         .then((r) => r.data),
   });
+
+  const resetFilters = () => {
+    setSearch("");
+    setStatusFilter("");
+    setArtistFilter("");
+    setTechniqueFilter("");
+    setYearFrom("");
+    setYearTo("");
+  };
+  const filtersActive =
+    !!search || !!statusFilter || !!artistFilter || !!techniqueFilter || !!yearFrom || !!yearTo;
 
   return (
     <div>
@@ -43,8 +76,8 @@ export default function ArtworksPage() {
         </Link>
       </div>
 
-      <div className="mb-4 flex gap-3">
-        <div className="relative flex-1">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <div className="relative min-w-[220px] flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
             placeholder="Поиск по названию..."
@@ -65,6 +98,52 @@ export default function ArtworksPage() {
             </option>
           ))}
         </select>
+        <select
+          value={artistFilter}
+          onChange={(e) => setArtistFilter(e.target.value)}
+          className="max-w-[200px] rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        >
+          <option value="">Все художники</option>
+          {artists.map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name_ru}
+            </option>
+          ))}
+        </select>
+        <select
+          value={techniqueFilter}
+          onChange={(e) => setTechniqueFilter(e.target.value)}
+          className="max-w-[200px] rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        >
+          <option value="">Все техники</option>
+          {techniques.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.name}
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          placeholder="Год от"
+          value={yearFrom}
+          onChange={(e) => setYearFrom(e.target.value)}
+          className="w-24 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        />
+        <input
+          type="number"
+          placeholder="до"
+          value={yearTo}
+          onChange={(e) => setYearTo(e.target.value)}
+          className="w-20 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        />
+        {filtersActive && (
+          <button
+            onClick={resetFilters}
+            className="rounded-lg border px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            Сбросить
+          </button>
+        )}
       </div>
 
       {isLoading ? (

@@ -19,12 +19,15 @@ log = logging.getLogger(__name__)
 @router.get("/", response_model=list[ArtistOut])
 async def list_artists(
     q: str | None = None,
+    is_group: bool | None = None,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
     stmt = select(Artist).order_by(Artist.name_ru)
     if q:
         stmt = stmt.where(Artist.name_ru.ilike(f"%{q}%") | Artist.name_en.ilike(f"%{q}%"))
+    if is_group is not None:
+        stmt = stmt.where(Artist.is_group == is_group)
     return (await db.execute(stmt)).scalars().all()
 
 

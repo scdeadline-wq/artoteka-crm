@@ -26,6 +26,9 @@ async def _next_inventory_number(db: AsyncSession) -> int:
 async def list_artworks(
     status: str | None = None,
     artist_id: int | None = None,
+    technique_id: int | None = None,
+    year_from: int | None = None,
+    year_to: int | None = None,
     q: str | None = None,
     limit: int = Query(50, le=200),
     offset: int = 0,
@@ -43,6 +46,12 @@ async def list_artworks(
         stmt = stmt.where(Artwork.status == ArtworkStatus(status))
     if artist_id:
         stmt = stmt.where(Artwork.artist_id == artist_id)
+    if technique_id:
+        stmt = stmt.join(Artwork.techniques).where(Technique.id == technique_id)
+    if year_from is not None:
+        stmt = stmt.where(Artwork.year >= year_from)
+    if year_to is not None:
+        stmt = stmt.where(Artwork.year <= year_to)
     if q:
         stmt = stmt.where(
             Artwork.title.ilike(f"%{q}%")

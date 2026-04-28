@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus } from "lucide-react";
+import { Plus, Search } from "lucide-react";
 import api from "@/lib/api";
 import type { Artist } from "@/lib/types";
 
@@ -13,9 +13,20 @@ export default function ArtistsPage() {
   const [nameEn, setNameEn] = useState("");
   const [isGroup, setIsGroup] = useState(false);
 
+  const [search, setSearch] = useState("");
+  const [groupFilter, setGroupFilter] = useState<"all" | "single" | "group">("all");
+
   const { data: artists = [] } = useQuery<Artist[]>({
-    queryKey: ["artists"],
-    queryFn: () => api.get("/artists").then((r) => r.data),
+    queryKey: ["artists", search, groupFilter],
+    queryFn: () =>
+      api
+        .get("/artists", {
+          params: {
+            q: search || undefined,
+            is_group: groupFilter === "all" ? undefined : groupFilter === "group",
+          },
+        })
+        .then((r) => r.data),
   });
 
   const create = useMutation({
@@ -85,6 +96,27 @@ export default function ArtistsPage() {
         </form>
       )}
 
+      <div className="mb-4 flex gap-3">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            placeholder="Поиск по имени..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full rounded-lg border py-2 pl-9 pr-4 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+        <select
+          value={groupFilter}
+          onChange={(e) => setGroupFilter(e.target.value as "all" | "single" | "group")}
+          className="rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        >
+          <option value="all">Все</option>
+          <option value="single">Одиночки</option>
+          <option value="group">Группы</option>
+        </select>
+      </div>
+
       <div className="rounded-xl bg-white shadow-sm">
         <table className="w-full text-sm">
           <thead>
@@ -96,6 +128,13 @@ export default function ArtistsPage() {
             </tr>
           </thead>
           <tbody>
+            {artists.length === 0 && (
+              <tr>
+                <td colSpan={4} className="px-4 py-6 text-center text-gray-400">
+                  Никого не нашли
+                </td>
+              </tr>
+            )}
             {artists.map((a) => (
               <tr key={a.id} className="border-b last:border-0 hover:bg-gray-50">
                 <td className="px-4 py-3 text-gray-400">{a.id}</td>
