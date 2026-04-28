@@ -87,16 +87,36 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await _show_preview(update, context, parsed)
 
 
+EDITABLE_FIELDS = [
+    ("title", "🎨 Название"),
+    ("artist_name", "👤 Художник"),
+    ("year", "📅 Год"),
+    ("technique", "🖌 Техника"),
+    ("size", "📐 Размер"),
+    ("sale_price", "💰 Цена"),
+]
+
+
 def _confirm_keyboard() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("✅ Сохранить", callback_data="add:confirm"),
-        InlineKeyboardButton("❌ Отмена", callback_data="add:cancel"),
-    ]])
+    return InlineKeyboardMarkup([
+        [
+            InlineKeyboardButton("✅ Сохранить", callback_data="add:confirm"),
+            InlineKeyboardButton("✏️ Поправить", callback_data="add:edit"),
+        ],
+        [InlineKeyboardButton("❌ Отмена", callback_data="add:cancel")],
+    ])
 
 
-async def _show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE, parsed: dict):
-    context.user_data["add_state"]["parsed"] = parsed
+def _edit_keyboard() -> InlineKeyboardMarkup:
+    rows = [
+        [InlineKeyboardButton(label, callback_data=f"edit:{key}")]
+        for key, label in EDITABLE_FIELDS
+    ]
+    rows.append([InlineKeyboardButton("← Назад", callback_data="add:back")])
+    return InlineKeyboardMarkup(rows)
 
+
+def _format_preview(parsed: dict) -> str:
     msg = "📋 Превью:\n"
     msg += f"🎨 Название: {parsed.get('title') or '—'}\n"
     msg += f"👤 Художник: {parsed.get('artist_name') or '—'}\n"
@@ -115,8 +135,12 @@ async def _show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE, pars
         msg += f"📍 Локация: {parsed['location']}\n"
     if parsed.get("description"):
         msg += f"📝 {parsed['description']}\n"
+    return msg
 
-    await update.message.reply_text(msg, reply_markup=_confirm_keyboard())
+
+async def _show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE, parsed: dict):
+    context.user_data["add_state"]["parsed"] = parsed
+    await update.message.reply_text(_format_preview(parsed), reply_markup=_confirm_keyboard())
     return CONFIRM
 
 
@@ -154,10 +178,21 @@ async def _do_create(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> int:
     return ConversationHandler.END
 
 
+FIELD_PROMPTS = {
+    "title": "Введи новое название (или «-» чтобы очистить):",
+    "artist_name": "Введи имя художника:",
+    "year": "Введи год (число):",
+    "technique": "Введи технику (например, «Холст, масло»):",
+    "size": "Введи размер: «ширина x высота» в см (например, 60x80):",
+    "sale_price": "Введи цену в рублях (число):",
+}
+
+
 async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Inline-кнопка ✅/❌ под превью."""
+    """Inline-кнопки на превью: Сохранить / Поправить / Отмена / Назад / выбор поля."""
     query = update.callback_query
     await query.answer()
+    state = context.user_data.get("add_state", {})
 
     if query.data == "add:cancel":
         await query.edit_message_reply_markup(reply_markup=None)
@@ -165,24 +200,87 @@ async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
         return ConversationHandler.END
 
-    # add:confirm — снимаем кнопки, чтобы не нажимали повторно
+    if query.data == "add:edit":
+        await query.edit_message_text(
+            _format_preview(state.get("parsed", {})) + "\nЧто поправить?",
+            reply_markup=_edit_keyboard(),
+        )
+        return CONFIRM
+
+    if query.data == "add:back":
+        await query.edit_message_text(
+            _format_preview(state.get("parsed", {})),
+            reply_markup=_confirm_keyboard(),
+        )
+        return CONFIRM
+
+    if query.data.startswith("edit:"):
+        field = query.data.split(":", 1)[1]
+        state["editing_field"] = field
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text(FIELD_PROMPTS.get(field, "Введи новое значение:"))
+        return CONFIRM
+
+    # add:confirm
     await query.edit_message_reply_markup(reply_markup=None)
     return await _do_create(query.message.chat_id, context)
 
 
+def _apply_field(parsed: dict, field: str, value: str) -> str | None:
+    """Записывает value в parsed для field. Возвращает текст ошибки или None."""
+    value = value.strip()
+    if field == "size":
+        import re
+        m = re.search(r"(\d+(?:[,.]\d+)?)\s*[xхХ×*]\s*(\d+(?:[,.]\d+)?)", value)
+        if not m:
+            return "Не понял размер. Формат: 60x80 или 60 x 80"
+        parsed["width_cm"] = float(m.group(1).replace(",", "."))
+        parsed["height_cm"] = float(m.group(2).replace(",", "."))
+        return None
+    if field == "year":
+        digits = "".join(c for c in value if c.isdigit())
+        if not digits:
+            return "Год должен быть числом."
+        parsed["year"] = int(digits[:4])
+        return None
+    if field == "sale_price":
+        digits = "".join(c for c in value if c.isdigit())
+        if not digits:
+            return "Цена должна быть числом."
+        parsed["sale_price"] = float(digits)
+        return None
+    # title, artist_name, technique — строки; «-» очищает
+    parsed[field] = None if value == "-" else value
+    return None
+
+
 async def confirm_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Текстовый ответ в state CONFIRM — нужен для дозапроса имени художника."""
+    """Текст в state CONFIRM: либо ввод значения для редактируемого поля, либо Да/Нет."""
     state = context.user_data.get("add_state", {})
+    text = (update.message.text or "").strip()
+
+    # Редактирование выбранного поля
+    field = state.pop("editing_field", None)
+    if field:
+        parsed = state.setdefault("parsed", {})
+        err = _apply_field(parsed, field, text)
+        if err:
+            state["editing_field"] = field  # вернуть флаг
+            await update.message.reply_text(err)
+            return CONFIRM
+        await update.message.reply_text(
+            _format_preview(parsed),
+            reply_markup=_confirm_keyboard(),
+        )
+        return CONFIRM
+
+    # Дозапрос имени художника (когда AI не понял)
     if state.pop("awaiting_artist_name", False):
-        artist_name = update.message.text.strip()
-        artist_id = await _resolve_artist(artist_name, force_create=True)
-        state["parsed"]["artist_name"] = artist_name
-        # повторяем создание
-        state.setdefault("parsed", {})
+        state.setdefault("parsed", {})["artist_name"] = text
         return await _do_create(update.message.chat_id, context)
 
-    # Старый Да/Нет fallback (если кнопки не сработали)
-    answer = (update.message.text or "").strip().lower()
+    # Текстовый Да/Нет fallback (если по какой-то причине не сработали кнопки)
+    answer = text.lower()
     if answer in {"да", "yes", "y", "ок", "ok", "+", "✅"}:
         return await _do_create(update.message.chat_id, context)
     if answer in {"нет", "no", "n", "❌"}:
@@ -271,7 +369,7 @@ def build_add_handler() -> ConversationHandler:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_text),
             ],
             CONFIRM: [
-                CallbackQueryHandler(confirm_callback, pattern=r"^add:(confirm|cancel)$"),
+                CallbackQueryHandler(confirm_callback, pattern=r"^(add:|edit:)"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_text),
             ],
         },
