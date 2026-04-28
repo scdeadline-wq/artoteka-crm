@@ -11,7 +11,7 @@ import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
 import type { Artwork, Artist, Technique, Client } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
-import ArtworkMockup from "@/components/mockup";
+// import ArtworkMockup from "@/components/mockup";  // скрыто, image-модель недоступна
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-200 text-gray-800",
@@ -399,13 +399,8 @@ export default function ArtworkDetailPage({
         )}
       </div>
 
-      {/* Мокапы скрыты — image-модель сейчас недоступна (geo-блок RU) */}
-      {false && hasImages && (
-        <div className="mb-6 rounded-xl bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">В интерьере</h2>
-          <ArtworkMockup artworkId={artwork.id} />
-        </div>
-      )}
+      {/* Мокапы скрыты до появления рабочей image-модели (gpt-5-image / gemini блокируют RU IP).
+          Компонент ArtworkMockup и стр. /mockup в коде остались — раскомментировать здесь и в sidebar.tsx, когда вернём. */}
 
       {/* Модалка продажи */}
       {showSellModal && (
