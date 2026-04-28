@@ -19,7 +19,7 @@ const NAV = [
   { href: "/artists", label: "Художники", icon: Palette },
   { href: "/clients", label: "Клиенты", icon: Users },
   { href: "/sales", label: "Продажи", icon: Receipt },
-  { href: "/mockup", label: "Мокап", icon: Sofa },
+  // { href: "/mockup", label: "Мокап", icon: Sofa },  // скрыто: image-модель недоступна (geo-блок)
 ];
 
 export default function Sidebar() {

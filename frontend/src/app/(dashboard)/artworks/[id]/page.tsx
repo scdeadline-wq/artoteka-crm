@@ -399,8 +399,8 @@ export default function ArtworkDetailPage({
         )}
       </div>
 
-      {/* Мокапы */}
-      {hasImages && (
+      {/* Мокапы скрыты — image-модель сейчас недоступна (geo-блок RU) */}
+      {false && hasImages && (
         <div className="mb-6 rounded-xl bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-gray-900">В интерьере</h2>
           <ArtworkMockup artworkId={artwork.id} />
