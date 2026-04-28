@@ -161,6 +161,12 @@ async def _import_record(
     expertise = fields.get(F_EXPERTISE) or []
     framing = fields.get(F_FRAMING) or []
 
+    technique_raw = fields.get(F_TECHNIQUE)
+    techniques: list[Technique] = []
+    if technique_raw:
+        tech = await _get_or_create_technique(db, str(technique_raw).strip(), technique_cache)
+        techniques.append(tech)
+
     artwork = Artwork(
         inventory_number=int(inventory),
         title=str(title),
@@ -171,14 +177,10 @@ async def _import_record(
         notes=notes,
         has_expertise=bool(expertise),
         status=ArtworkStatus.collection,
+        techniques=techniques,
     )
     db.add(artwork)
     await db.flush()
-
-    technique_raw = fields.get(F_TECHNIQUE)
-    if technique_raw:
-        tech = await _get_or_create_technique(db, str(technique_raw).strip(), technique_cache)
-        artwork.techniques.append(tech)
 
     for idx, photo in enumerate(fields.get(F_PHOTOS) or []):
         url = photo.get("url")

@@ -1,7 +1,8 @@
-"""Голос → структурированные поля одним вызовом через OpenRouter gpt-audio-mini.
+"""Голос → структурированные поля одним вызовом через OpenRouter Voxtral.
 
 Заменяет Whisper + отдельный парсер: модель сама распознаёт речь и
-сразу извлекает JSON. Telegram присылает голосовые в OGG/Opus.
+сразу извлекает JSON. Telegram присылает голосовые в OGG/Opus —
+voxtral принимает ogg напрямую (gpt-audio-mini требовал wav/mp3).
 """
 from __future__ import annotations
 
@@ -13,7 +14,7 @@ import httpx
 from bot.config import settings
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-AUDIO_MODEL = "openai/gpt-audio-mini"
+AUDIO_MODEL = "mistralai/voxtral-small-24b-2507"
 
 PROMPT = """Это голосовое описание произведения искусства из CRM галереи.
 Распознай речь на русском и извлеки структурированные поля. Верни ТОЛЬКО валидный JSON:
