@@ -164,15 +164,23 @@ async def _match_techniques(technique_text: str | None) -> list[int]:
     if not technique_text:
         return []
     techniques = await crm.list_techniques()
-    text = technique_text.lower()
-    matched = []
+    text = technique_text.lower().strip()
+
+    for t in techniques:
+        if (t.get("name") or "").lower() == text:
+            return [t["id"]]
+
+    best_id: int | None = None
+    best_score = 0
     for t in techniques:
         name = (t.get("name") or "").lower()
-        # Грубое совпадение: материал или техника попадает в текст
-        words = [w.strip(" ,.") for w in name.split(",")]
-        if any(w and w in text for w in words):
-            matched.append(t["id"])
-    return matched
+        words = [w.strip(" ,.") for w in name.split(",") if w.strip(" ,.")]
+        if not words:
+            continue
+        if all(w in text for w in words) and len(words) > best_score:
+            best_id = t["id"]
+            best_score = len(words)
+    return [best_id] if best_id else []
 
 
 def _build_artwork_payload(parsed: dict, artist_id: int, technique_ids: list[int]) -> dict:
