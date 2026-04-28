@@ -7,6 +7,7 @@ from telegram.ext import (
     filters,
 )
 
+from bot.config import settings
 from bot.handlers.auth import require_whitelist
 from bot.handlers.formatters import format_artwork_card
 from bot.handlers.keyboard import BTN_FIND
@@ -48,7 +49,19 @@ async def _do_search(update: Update, query: str) -> None:
         filtered = filtered[:5]
 
     for artwork in filtered:
-        await update.message.reply_text(format_artwork_card(artwork), parse_mode="HTML")
+        caption = format_artwork_card(artwork)
+        primary = artwork.get("primary_image")
+        if primary:
+            try:
+                await update.message.reply_photo(
+                    photo=f"{settings.crm_public_url.rstrip('/')}{primary}",
+                    caption=caption,
+                    parse_mode="HTML",
+                )
+                continue
+            except Exception:
+                pass
+        await update.message.reply_text(caption, parse_mode="HTML")
 
 
 @require_whitelist
