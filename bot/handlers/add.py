@@ -8,8 +8,15 @@
 """
 from io import BytesIO
 
-from telegram import Update
-from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, CommandHandler, filters
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import (
+    ContextTypes,
+    ConversationHandler,
+    MessageHandler,
+    CommandHandler,
+    CallbackQueryHandler,
+    filters,
+)
 
 from bot.handlers.auth import require_whitelist
 from bot.handlers.formatters import format_artwork_card
@@ -80,6 +87,13 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return await _show_preview(update, context, parsed)
 
 
+def _confirm_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✅ Сохранить", callback_data="add:confirm"),
+        InlineKeyboardButton("❌ Отмена", callback_data="add:cancel"),
+    ]])
+
+
 async def _show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE, parsed: dict):
     context.user_data["add_state"]["parsed"] = parsed
 
@@ -102,32 +116,20 @@ async def _show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE, pars
     if parsed.get("description"):
         msg += f"📝 {parsed['description']}\n"
 
-    msg += "\nВсё верно? Да / Нет"
-    await update.message.reply_text(msg)
+    await update.message.reply_text(msg, reply_markup=_confirm_keyboard())
     return CONFIRM
 
 
-async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    answer = update.message.text.strip().lower()
-    if answer not in {"да", "yes", "y", "ок", "ok", "+", "✅"}:
-        await update.message.reply_text(
-            "Окей. Пришли голосовое заново или /cancel."
-        )
-        return WAIT_VOICE
-
+async def _do_create(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Реально создаёт работу. Возвращает следующий state."""
     state = context.user_data["add_state"]
     parsed = state.get("parsed", {})
 
     artist_id = await _resolve_artist(parsed.get("artist_name"))
     if not artist_id:
-        await update.message.reply_text(
-            "Не понял художника. Напиши имя одной строкой:"
-        )
+        await context.bot.send_message(chat_id=chat_id, text="Не понял художника. Напиши имя одной строкой:")
         state["awaiting_artist_name"] = True
         return CONFIRM
-
-    if state.pop("awaiting_artist_name", False):
-        artist_id = await _resolve_artist(update.message.text.strip(), force_create=True)
 
     technique_ids = await _match_techniques(parsed.get("technique"))
     if parsed.get("technique") and not technique_ids:
@@ -142,10 +144,53 @@ async def confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await crm.upload_artwork_image(artwork["id"], state["image_bytes"], primary=True)
 
     full = await crm.get_artwork(artwork["id"])
-    await update.message.reply_text("✅ Добавлено!\n" + format_artwork_card(full), parse_mode="HTML")
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="✅ Добавлено!\n" + format_artwork_card(full),
+        parse_mode="HTML",
+    )
 
     context.user_data.clear()
     return ConversationHandler.END
+
+
+async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Inline-кнопка ✅/❌ под превью."""
+    query = update.callback_query
+    await query.answer()
+
+    if query.data == "add:cancel":
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("❌ Отменено. Можешь начать заново через ➕ Добавить.")
+        context.user_data.clear()
+        return ConversationHandler.END
+
+    # add:confirm — снимаем кнопки, чтобы не нажимали повторно
+    await query.edit_message_reply_markup(reply_markup=None)
+    return await _do_create(query.message.chat_id, context)
+
+
+async def confirm_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Текстовый ответ в state CONFIRM — нужен для дозапроса имени художника."""
+    state = context.user_data.get("add_state", {})
+    if state.pop("awaiting_artist_name", False):
+        artist_name = update.message.text.strip()
+        artist_id = await _resolve_artist(artist_name, force_create=True)
+        state["parsed"]["artist_name"] = artist_name
+        # повторяем создание
+        state.setdefault("parsed", {})
+        return await _do_create(update.message.chat_id, context)
+
+    # Старый Да/Нет fallback (если кнопки не сработали)
+    answer = (update.message.text or "").strip().lower()
+    if answer in {"да", "yes", "y", "ок", "ok", "+", "✅"}:
+        return await _do_create(update.message.chat_id, context)
+    if answer in {"нет", "no", "n", "❌"}:
+        await update.message.reply_text("❌ Отменено.")
+        context.user_data.clear()
+        return ConversationHandler.END
+    await update.message.reply_text("Нажми кнопку под превью или /cancel.")
+    return CONFIRM
 
 
 async def _resolve_artist(name: str | None, force_create: bool = False) -> int | None:
@@ -225,7 +270,10 @@ def build_add_handler() -> ConversationHandler:
                 MessageHandler(filters.VOICE | filters.AUDIO, receive_voice),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_text),
             ],
-            CONFIRM: [MessageHandler(filters.TEXT & ~filters.COMMAND, confirm)],
+            CONFIRM: [
+                CallbackQueryHandler(confirm_callback, pattern=r"^add:(confirm|cancel)$"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_text),
+            ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
         allow_reentry=True,
