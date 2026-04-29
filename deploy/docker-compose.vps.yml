@@ -103,12 +103,13 @@ services:
     build:
       context: ../bot
     restart: always
+    # host network — единственный способ дотянуться до Telegram через IPv6 хоста.
+    # IPv4 у Telegram заблокирован РКН (все DC), IPv6 (2001:67c:4e8:f004::9) пока проходит.
+    network_mode: host
     env_file: .env
     environment:
-      CRM_BASE_URL: http://backend:8000
-    extra_hosts:
-      # РКН блокирует часть Telegram IP — пинним на работающий
-      - "api.telegram.org:149.154.167.220"
+      # При host network имя backend не resolve'ится — идём через localhost.
+      CRM_BASE_URL: http://127.0.0.1:8000
     depends_on:
       backend:
         condition: service_started
