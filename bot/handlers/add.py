@@ -117,24 +117,24 @@ def _edit_keyboard() -> InlineKeyboardMarkup:
 
 
 def _format_preview(parsed: dict) -> str:
-    msg = "📋 Превью:\n"
-    msg += f"🎨 Название: {parsed.get('title') or '—'}\n"
-    msg += f"👤 Художник: {parsed.get('artist_name') or '—'}\n"
-    msg += f"📅 Год: {parsed.get('year') or '—'}\n"
+    msg = "Превью:\n"
+    msg += f"Название: {parsed.get('title') or '—'}\n"
+    msg += f"Автор: {parsed.get('artist_name') or '—'}\n"
+    msg += f"Год: {parsed.get('year') or '—'}\n"
     if parsed.get("technique"):
-        msg += f"🖌 Техника: {parsed['technique']}\n"
+        msg += f"Техника: {parsed['technique']}\n"
     if parsed.get("style_period"):
-        msg += f"🎭 Стиль: {parsed['style_period']}\n"
+        msg += f"Стиль: {parsed['style_period']}\n"
     if parsed.get("width_cm") and parsed.get("height_cm"):
-        msg += f"📐 Размер: {parsed['width_cm']} × {parsed['height_cm']} см\n"
+        msg += f"Размер: {parsed['width_cm']} × {parsed['height_cm']} см\n"
     if parsed.get("sale_price"):
-        msg += f"💰 Цена: {int(float(parsed['sale_price'])):,} ₽\n".replace(",", " ")
+        msg += f"Цена: {int(float(parsed['sale_price'])):,} ₽\n".replace(",", " ")
     if parsed.get("edition"):
-        msg += f"🔢 Тираж: {parsed['edition']}\n"
+        msg += f"Тираж: {parsed['edition']}\n"
     if parsed.get("location"):
-        msg += f"📍 Локация: {parsed['location']}\n"
+        msg += f"Локация: {parsed['location']}\n"
     if parsed.get("description"):
-        msg += f"📝 {parsed['description']}\n"
+        msg += f"Описание: {parsed['description']}\n"
     return msg
 
 

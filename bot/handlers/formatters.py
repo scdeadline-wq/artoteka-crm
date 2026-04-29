@@ -1,16 +1,6 @@
 """Форматирование ответов бота."""
 from html import escape
 
-STATUS_EMOJI = {
-    "draft": "📝",
-    "review": "🔍",
-    "for_sale": "🟢",
-    "available": "🟢",
-    "reserved": "🟡",
-    "sold": "🔴",
-    "collection": "📚",
-}
-
 STATUS_LABEL = {
     "draft": "Черновик",
     "review": "На проверке",
@@ -37,11 +27,12 @@ def format_artwork_card(a: dict) -> str:
     status = (a.get("status") or "draft").lower()
 
     return (
-        f"🎨 <b>{escape(str(title))}</b>\n"
-        f"👤 {escape(artist_name)}, {year}\n"
-        f"🖌 {escape(techs)}\n"
-        f"📐 {size}\n"
-        f"💰 {price_str}\n"
-        f"📋 № {inv}\n"
-        f"{STATUS_EMOJI.get(status, '')} {STATUS_LABEL.get(status, status)}"
+        f"<b>{escape(str(title))}</b>\n"
+        f"Автор: {escape(artist_name)}\n"
+        f"Год: {year}\n"
+        f"Техника: {escape(techs)}\n"
+        f"Размер: {size}\n"
+        f"Цена: {price_str}\n"
+        f"№ {inv}\n"
+        f"Статус: {STATUS_LABEL.get(status, status)}"
     )

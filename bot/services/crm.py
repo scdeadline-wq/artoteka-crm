@@ -59,8 +59,17 @@ class CRMClient:
         response.raise_for_status()
         return response.json()
 
-    async def search_artworks(self, query: str | None = None) -> list[dict[str, Any]]:
-        params = {"q": query} if query else {}
+    async def search_artworks(
+        self,
+        query: str | None = None,
+        status: str | None = None,
+        limit: int = 200,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": limit}
+        if query:
+            params["q"] = query
+        if status:
+            params["status"] = status
         response = await self._request("GET", "/artworks/", params=params)
         response.raise_for_status()
         return response.json()

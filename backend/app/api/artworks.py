@@ -53,10 +53,16 @@ async def list_artworks(
     if year_to is not None:
         stmt = stmt.where(Artwork.year <= year_to)
     if q:
-        stmt = stmt.where(
-            Artwork.title.ilike(f"%{q}%")
-            | Artwork.description.ilike(f"%{q}%")
-        )
+        from sqlalchemy import or_ as sa_or
+        clauses = [
+            Artwork.title.ilike(f"%{q}%"),
+            Artwork.description.ilike(f"%{q}%"),
+            Artwork.artist.has(Artist.name_ru.ilike(f"%{q}%")),
+            Artwork.artist.has(Artist.name_en.ilike(f"%{q}%")),
+        ]
+        if q.strip().lstrip("№#").isdigit():
+            clauses.append(Artwork.inventory_number == int(q.strip().lstrip("№#")))
+        stmt = stmt.where(sa_or(*clauses))
 
     results = (await db.execute(stmt)).scalars().all()
     out = []

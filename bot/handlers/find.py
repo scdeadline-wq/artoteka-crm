@@ -20,26 +20,19 @@ STATUS_FILTERS = {"available", "for_sale", "sold", "reserved", "draft", "review"
 
 
 async def _do_search(update: Update, query: str) -> None:
-    artworks = await crm.search_artworks()
-    q = query.strip().lower()
+    q = query.strip()
 
     if not q:
+        all_artworks = await crm.search_artworks(limit=200)
         await update.message.reply_text(
-            f"В базе {len(artworks)} работ. Уточни запрос: номер, название, художник или статус."
+            f"В базе {len(all_artworks)} работ. Уточни запрос: номер, название, художник или статус."
         )
         return
 
-    if q in STATUS_FILTERS:
-        filtered = [a for a in artworks if (a.get("status") or "").lower() == q]
-    elif q.isdigit():
-        filtered = [a for a in artworks if str(a.get("inventory_number")) == q]
+    if q.lower() in STATUS_FILTERS:
+        filtered = await crm.search_artworks(status=q.lower(), limit=200)
     else:
-        filtered = [
-            a for a in artworks
-            if q in (a.get("title") or "").lower()
-            or q in ((a.get("artist") or {}).get("name_ru") or "").lower()
-            or q in ((a.get("artist") or {}).get("name_en") or "").lower()
-        ]
+        filtered = await crm.search_artworks(query=q, limit=200)
 
     if not filtered:
         await update.message.reply_text("Ничего не нашёл")
