@@ -34,3 +34,6 @@ uploads/
 # Whisper output
 *.txt
 !requirements.txt
+
+# Локальные журналы сессий Claude (личные заметки, не код проекта)
+docs/journal/

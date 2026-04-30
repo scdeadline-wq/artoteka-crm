@@ -66,14 +66,29 @@
 
 ## Обновление
 
+Используем единый скрипт `deploy/update.sh` — он делает `git pull` и пересобирает указанные сервисы (или все, если без аргументов).
+
 ```bash
-# На VPS:
-cd /opt/artoteka-crm
-git pull
-cd deploy
-docker compose -f docker-compose.vps.yml up -d --build backend   # если менялся backend
-docker compose -f docker-compose.vps.yml up -d --build frontend  # если менялся frontend
+# На VPS, из /opt/artoteka-crm:
+./deploy/update.sh                  # подтянуть main и пересобрать всё
+./deploy/update.sh backend          # только backend
+./deploy/update.sh backend bot      # backend + bot
 ```
+
+С локалки одной командой:
+```bash
+ssh root@185.152.94.51 "cd /opt/artoteka-crm && ./deploy/update.sh backend"
+```
+
+## Сетевая особенность: IPv6 отключён
+
+На VPS IPv6 принудительно отключён через `/etc/sysctl.d/99-disable-ipv6.conf`,
+потому что DNS `api.telegram.org` отдаёт AAAA первым, а IPv6-маршрут до Telegram
+с этого VPS не работает (Python/httpx уходил в TimedOut). После отключения IPv6
+весь трафик идёт через IPv4, который к Telegram доступен напрямую.
+
+Если IPv6 нужно вернуть — удалить `/etc/sysctl.d/99-disable-ipv6.conf` и
+`sysctl --system`.
 
 ## Бэкап базы
 
