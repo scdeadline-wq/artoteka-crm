@@ -4,7 +4,7 @@ import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft, Edit3, Save, X, Trash2, ShoppingCart, Loader2,
+  ArrowLeft, Edit3, Save, X, Trash2, ShoppingCart, Loader2, FileDown,
 } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
@@ -186,6 +186,20 @@ export default function ArtworkDetailPage({
           <ArrowLeft size={16} /> Назад
         </Link>
         <div className="flex gap-2">
+          {!editing && (
+            <button
+              onClick={async () => {
+                const res = await api.get(`/artworks/${id}/pdf/`, { responseType: "blob" });
+                const blob = res.data as Blob;
+                const url = URL.createObjectURL(blob);
+                window.open(url, "_blank", "noopener");
+                setTimeout(() => URL.revokeObjectURL(url), 60_000);
+              }}
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+            >
+              <FileDown size={14} /> PDF
+            </button>
+          )}
           {!editing && artwork.status !== "sold" && (
             <button
               onClick={() => {

@@ -14,6 +14,7 @@ from app.services.storage import upload_image, get_image_bytes
 from app.services.ai import analyze_artwork_image
 from app.services.enhance import auto_enhance, smart_crop
 from app.services.mockup import generate_mockup, generate_custom_mockup
+from app.services.pdf import render_artwork_pdf
 from app.models.mockup import Mockup
 
 router = APIRouter()
@@ -391,6 +392,36 @@ def _parse_year(year_str: str | None) -> int | None:
     # "1967" -> 1967, "1960-е" -> 1960
     digits = "".join(c for c in str(year_str) if c.isdigit())
     return int(digits[:4]) if len(digits) >= 4 else None
+
+
+@router.get("/{artwork_id}/pdf/")
+async def artwork_pdf(
+    artwork_id: int,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """PDF-карточка работы. Закупочная цена — только для admin."""
+    stmt = (
+        select(Artwork)
+        .options(
+            selectinload(Artwork.artist),
+            selectinload(Artwork.techniques),
+            selectinload(Artwork.images),
+            selectinload(Artwork.room),
+        )
+        .where(Artwork.id == artwork_id)
+    )
+    artwork = (await db.execute(stmt)).scalar_one_or_none()
+    if not artwork:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+
+    pdf_bytes = render_artwork_pdf(artwork, include_purchase_price=is_admin(user))
+    inv = artwork.inventory_number
+    return FastAPIResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="artoteka_{inv}.pdf"'},
+    )
 
 
 @router.patch("/{artwork_id}/status/")

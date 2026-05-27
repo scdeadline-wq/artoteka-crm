@@ -16,3 +16,4 @@ httpx
 pillow-heif
 beautifulsoup4
 lxml
+weasyprint>=63
