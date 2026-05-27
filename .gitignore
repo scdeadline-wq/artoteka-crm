@@ -37,3 +37,7 @@ uploads/
 
 # Локальные журналы сессий Claude (личные заметки, не код проекта)
 docs/journal/
+
+# Снимки состояния перед деплоем (на сервере, для rollback.sh)
+deploy/.last_deploy_sha
+deploy/.last_alembic_rev

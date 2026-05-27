@@ -11,6 +11,7 @@ from telegram.ext import Application, CommandHandler
 from bot.config import settings
 from bot.handlers.add import build_add_handler
 from bot.handlers.client import build_client_handler
+from bot.handlers.delete import build_delete_handlers
 from bot.handlers.find import build_find_handler
 from bot.handlers.sold import build_sold_handler
 from bot.handlers.start import help_cmd, start
@@ -28,6 +29,8 @@ COMMANDS = [
     BotCommand("find", "Найти работу"),
     BotCommand("sold", "Отметить продажу"),
     BotCommand("client", "Добавить клиента"),
+    BotCommand("delete", "Удалить работу (admin)"),
+    BotCommand("trash", "Корзина (admin)"),
     BotCommand("help", "Справка"),
 ]
 
@@ -60,8 +63,10 @@ def main() -> None:
     app.add_handler(build_find_handler())
     app.add_handler(build_sold_handler())
     app.add_handler(build_client_handler())
+    for h in build_delete_handlers():
+        app.add_handler(h)
 
-    logger.info("Bot запущен. Whitelist: %s", settings.allowed_ids)
+    logger.info("Bot запущен. Whitelist: %s | Admins: %s", settings.allowed_ids, settings.admin_ids)
     app.run_polling(allowed_updates=["message", "callback_query"])
 
 

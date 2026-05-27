@@ -9,9 +9,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import User
+from app.models import User, UserRole
 
 security = HTTPBearer()
+
+
+def is_admin(user: User) -> bool:
+    """owner и admin — оба считаются «админскими» ролями.
+    Видят закупочные цены и маржу, CRUD на работы, оформление продаж,
+    управление пользователями. Только owner может назначать роль owner.
+    """
+    return user.role in (UserRole.owner, UserRole.admin)
+
+
+def is_owner(user: User) -> bool:
+    return user.role == UserRole.owner
 
 
 def verify_password(plain: str, hashed: str) -> bool:
@@ -40,4 +52,16 @@ async def get_current_user(
     user = (await db.execute(select(User).where(User.id == user_id))).scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    return user
+
+
+async def require_admin(user: User = Depends(get_current_user)) -> User:
+    if not is_admin(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin only")
+    return user
+
+
+async def require_owner(user: User = Depends(get_current_user)) -> User:
+    if not is_owner(user):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Owner only")
     return user

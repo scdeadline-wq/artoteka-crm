@@ -9,7 +9,7 @@ from telegram.ext import (
     filters,
 )
 
-from bot.handlers.auth import require_whitelist
+from bot.handlers.auth import is_admin, require_whitelist
 from bot.handlers.formatters import format_artwork_card
 from bot.handlers.keyboard import BTN_FIND
 from bot.services.crm import crm
@@ -20,6 +20,7 @@ STATUS_FILTERS = {"available", "for_sale", "sold", "reserved", "draft", "review"
 
 
 async def _do_search(update: Update, query: str) -> None:
+    admin = is_admin(update)
     q = query.strip()
 
     if not q:
@@ -44,7 +45,7 @@ async def _do_search(update: Update, query: str) -> None:
 
     for artwork in filtered:
         full = await crm.get_artwork(artwork["id"])
-        caption = format_artwork_card(full)
+        caption = format_artwork_card(full, is_admin=admin)
         images = sorted(full.get("images") or [], key=lambda i: (not i.get("is_primary"), i.get("sort_order", 0)))
 
         photo_blobs: list[bytes] = []

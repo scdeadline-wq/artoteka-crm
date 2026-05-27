@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Trash2 } from "lucide-react";
 import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
+import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { ArtworkListItem, Artist, Technique } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 
@@ -25,6 +26,13 @@ export default function ArtworksPage() {
   const [techniqueFilter, setTechniqueFilter] = useState("");
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
+  const [priceFrom, setPriceFrom] = useState("");
+  const [priceTo, setPriceTo] = useState("");
+  const [framedFilter, setFramedFilter] = useState<"" | "true" | "false">("");
+  const [sort, setSort] = useState<"" | "last_name" | "inventory">("");
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = isAdminRole(user);
 
   const { data: artists = [] } = useQuery<Artist[]>({
     queryKey: ["artists-for-filter"],
@@ -36,7 +44,10 @@ export default function ArtworksPage() {
   });
 
   const { data: artworks = [], isLoading } = useQuery<ArtworkListItem[]>({
-    queryKey: ["artworks", search, statusFilter, artistFilter, techniqueFilter, yearFrom, yearTo],
+    queryKey: [
+      "artworks", search, statusFilter, artistFilter, techniqueFilter,
+      yearFrom, yearTo, tagFilter, priceFrom, priceTo, framedFilter, sort,
+    ],
     queryFn: () =>
       api
         .get("/artworks", {
@@ -47,6 +58,11 @@ export default function ArtworksPage() {
             technique_id: techniqueFilter || undefined,
             year_from: yearFrom || undefined,
             year_to: yearTo || undefined,
+            tag: tagFilter || undefined,
+            price_from: priceFrom || undefined,
+            price_to: priceTo || undefined,
+            is_framed: framedFilter || undefined,
+            sort: sort || undefined,
           },
         })
         .then((r) => r.data),
@@ -59,21 +75,38 @@ export default function ArtworksPage() {
     setTechniqueFilter("");
     setYearFrom("");
     setYearTo("");
+    setTagFilter("");
+    setPriceFrom("");
+    setPriceTo("");
+    setFramedFilter("");
+    setSort("");
   };
   const filtersActive =
-    !!search || !!statusFilter || !!artistFilter || !!techniqueFilter || !!yearFrom || !!yearTo;
+    !!search || !!statusFilter || !!artistFilter || !!techniqueFilter ||
+    !!yearFrom || !!yearTo || !!tagFilter || !!priceFrom || !!priceTo ||
+    !!framedFilter || !!sort;
 
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Произведения</h1>
-        <Link
-          href="/artworks/new"
-          className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
-        >
-          <Plus size={16} />
-          Добавить
-        </Link>
+        <div className="flex items-center gap-2">
+          {isAdmin && (
+            <Link
+              href="/artworks/trash"
+              className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+            >
+              <Trash2 size={14} /> Корзина
+            </Link>
+          )}
+          <Link
+            href="/artworks/new"
+            className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+          >
+            <Plus size={16} />
+            Добавить
+          </Link>
+        </div>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
@@ -136,6 +169,44 @@ export default function ArtworksPage() {
           onChange={(e) => setYearTo(e.target.value)}
           className="w-20 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
         />
+        <input
+          placeholder="Тег"
+          value={tagFilter}
+          onChange={(e) => setTagFilter(e.target.value.replace(/^#/, ""))}
+          className="w-28 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        />
+        <input
+          type="number"
+          placeholder="Цена от"
+          value={priceFrom}
+          onChange={(e) => setPriceFrom(e.target.value)}
+          className="w-24 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        />
+        <input
+          type="number"
+          placeholder="до"
+          value={priceTo}
+          onChange={(e) => setPriceTo(e.target.value)}
+          className="w-20 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        />
+        <select
+          value={framedFilter}
+          onChange={(e) => setFramedFilter(e.target.value as "" | "true" | "false")}
+          className="rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        >
+          <option value="">Рама: любая</option>
+          <option value="true">В раме</option>
+          <option value="false">Без рамы</option>
+        </select>
+        <select
+          value={sort}
+          onChange={(e) => setSort(e.target.value as "" | "last_name" | "inventory")}
+          className="rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+        >
+          <option value="">Новые сверху</option>
+          <option value="last_name">По фамилии</option>
+          <option value="inventory">По № инв.</option>
+        </select>
         {filtersActive && (
           <button
             onClick={resetFilters}

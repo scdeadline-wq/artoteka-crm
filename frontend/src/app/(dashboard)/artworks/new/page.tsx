@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Upload, Sparkles, Loader2, X, Check, Wand2, ExternalLink } from "lucide-react";
 import api from "@/lib/api";
+import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { Artist, Technique } from "@/lib/types";
 
 type Step = "upload" | "review";
@@ -34,6 +35,8 @@ interface SearchSource {
 
 export default function NewArtworkPage() {
   const router = useRouter();
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = isAdminRole(user);
   const [step, setStep] = useState<Step>("upload");
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -63,6 +66,8 @@ export default function NewArtworkPage() {
     height_cm: "",
     purchase_price: "",
     sale_price: "",
+    is_framed: false,
+    tags: "",
     status: "draft",
     technique_ids: [] as number[],
   });
@@ -134,7 +139,7 @@ export default function NewArtworkPage() {
         artistId = newArtist.id;
       }
 
-      const { data: artwork } = await api.post("/artworks", {
+      const payload: Record<string, unknown> = {
         title: form.title || null,
         artist_id: artistId,
         year: form.year ? Number(form.year) : null,
@@ -144,11 +149,19 @@ export default function NewArtworkPage() {
         location: form.location || null,
         width_cm: form.width_cm ? Number(form.width_cm) : null,
         height_cm: form.height_cm ? Number(form.height_cm) : null,
-        purchase_price: form.purchase_price ? Number(form.purchase_price) : null,
         sale_price: form.sale_price ? Number(form.sale_price) : null,
+        is_framed: !!form.is_framed,
+        tags: form.tags
+          .split(",")
+          .map((t) => t.trim().replace(/^#/, ""))
+          .filter(Boolean),
         status: form.status,
         technique_ids: form.technique_ids,
-      });
+      };
+      if (isAdmin) {
+        payload.purchase_price = form.purchase_price ? Number(form.purchase_price) : null;
+      }
+      const { data: artwork } = await api.post("/artworks", payload);
 
       // Загружаем фото
       if (imageFile) {
@@ -611,20 +624,22 @@ export default function NewArtworkPage() {
         {/* Цены и локация */}
         <div className="rounded-xl bg-white p-5 shadow-sm">
           <div className="grid grid-cols-3 gap-4">
-            <div>
-              <label className="mb-1 block text-xs text-gray-500">
-                Цена закупки (₽)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={form.purchase_price}
-                onChange={(e) =>
-                  setForm({ ...form, purchase_price: e.target.value })
-                }
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-              />
-            </div>
+            {isAdmin && (
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">
+                  Цена закупки (₽)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.purchase_price}
+                  onChange={(e) =>
+                    setForm({ ...form, purchase_price: e.target.value })
+                  }
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+            )}
             <div>
               <label className="mb-1 block text-xs text-gray-500">
                 Цена продажи (₽)
@@ -653,6 +668,29 @@ export default function NewArtworkPage() {
                 }
                 className="w-full rounded-lg border px-3 py-2 text-sm"
                 placeholder="Склад, адрес"
+              />
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={form.is_framed}
+                  onChange={(e) =>
+                    setForm({ ...form, is_framed: e.target.checked })
+                  }
+                />
+                В раме
+              </label>
+            </div>
+            <div className="col-span-3">
+              <label className="mb-1 block text-xs text-gray-500">
+                Теги (через запятую, без #)
+              </label>
+              <input
+                value={form.tags}
+                onChange={(e) => setForm({ ...form, tags: e.target.value })}
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+                placeholder="пейзаж, абстракция, портрет"
               />
             </div>
           </div>

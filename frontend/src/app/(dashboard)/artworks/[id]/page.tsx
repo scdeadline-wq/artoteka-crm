@@ -9,6 +9,7 @@ import {
 import Link from "next/link";
 import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
+import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { Artwork, Artist, Technique, Client } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 // import ArtworkMockup from "@/components/mockup";  // скрыто, image-модель недоступна
@@ -41,6 +42,9 @@ export default function ArtworkDetailPage({
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [showSellModal, setShowSellModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = isAdminRole(user);
 
   const { data: artwork, isLoading } = useQuery<Artwork>({
     queryKey: ["artwork", id],
@@ -82,29 +86,48 @@ export default function ArtworkDetailPage({
       height_cm: artwork.height_cm || "",
       purchase_price: artwork.purchase_price || "",
       sale_price: artwork.sale_price || "",
+      is_framed: !!artwork.is_framed,
+      tags: artwork.tags || [],
       technique_ids: artwork.techniques.map((t) => t.id),
     });
     setEditing(true);
   }
 
   const updateMutation = useMutation({
-    mutationFn: () =>
-      api.put(`/artworks/${id}`, {
+    mutationFn: () => {
+      const payload: Record<string, unknown> = {
         ...form,
         year: form.year ? Number(form.year) : null,
         width_cm: form.width_cm ? Number(form.width_cm) : null,
         height_cm: form.height_cm ? Number(form.height_cm) : null,
-        purchase_price: form.purchase_price ? Number(form.purchase_price) : null,
         sale_price: form.sale_price ? Number(form.sale_price) : null,
         title: form.title || null,
         edition: form.edition || null,
         description: form.description || null,
         condition: form.condition || null,
         location: form.location || null,
-      }),
+        is_framed: !!form.is_framed,
+        tags: form.tags || [],
+      };
+      // Закупочную цену передаём только если юзер — owner
+      if (isAdmin) {
+        payload.purchase_price = form.purchase_price ? Number(form.purchase_price) : null;
+      } else {
+        delete payload.purchase_price;
+      }
+      return api.put(`/artworks/${id}`, payload);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["artwork", id] });
       setEditing(false);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: () => api.delete(`/artworks/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      router.push("/artworks");
     },
   });
 
@@ -169,6 +192,14 @@ export default function ArtworkDetailPage({
               className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-500"
             >
               <ShoppingCart size={14} /> Продать
+            </button>
+          )}
+          {!editing && isAdmin && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="flex items-center gap-1.5 rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50"
+            >
+              <Trash2 size={14} /> Удалить
             </button>
           )}
           {!editing ? (
@@ -296,13 +327,33 @@ export default function ArtworkDetailPage({
               <label className="mb-1 block text-xs text-gray-500">Местоположение</label>
               <input value={form.location as string} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
             </div>
-            <div>
-              <label className="mb-1 block text-xs text-gray-500">Цена закупки (₽)</label>
-              <input type="number" value={form.purchase_price as string} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
-            </div>
+            {isAdmin && (
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Цена закупки (₽)</label>
+                <input type="number" value={form.purchase_price as string} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
+              </div>
+            )}
             <div>
               <label className="mb-1 block text-xs text-gray-500">Цена продажи (₽)</label>
               <input type="number" value={form.sale_price as string} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
+            </div>
+            <div className="flex items-end">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={!!form.is_framed} onChange={(e) => setForm({ ...form, is_framed: e.target.checked })} />
+                В раме
+              </label>
+            </div>
+            <div className="col-span-full">
+              <label className="mb-1 block text-xs text-gray-500">Теги (через запятую, без #)</label>
+              <input
+                value={((form.tags as string[]) || []).join(", ")}
+                onChange={(e) => setForm({
+                  ...form,
+                  tags: e.target.value.split(",").map((t) => t.trim().replace(/^#/, "")).filter(Boolean),
+                })}
+                placeholder="пейзаж, абстракция, портрет"
+                className="w-full rounded border px-2 py-1.5 text-sm"
+              />
             </div>
             <div className="col-span-full">
               <label className="mb-1 block text-xs text-gray-500">Описание</label>
@@ -376,7 +427,7 @@ export default function ArtworkDetailPage({
                 <p className="font-medium">{artwork.condition}</p>
               </div>
             )}
-            {artwork.purchase_price != null && (
+            {isAdmin && artwork.purchase_price != null && (
               <div>
                 <p className="text-gray-500">Цена закупки</p>
                 <p className="font-medium">{Number(artwork.purchase_price).toLocaleString("ru")} ₽</p>
@@ -386,6 +437,22 @@ export default function ArtworkDetailPage({
               <div>
                 <p className="text-gray-500">Цена продажи</p>
                 <p className="font-semibold text-green-700">{Number(artwork.sale_price).toLocaleString("ru")} ₽</p>
+              </div>
+            )}
+            {artwork.room && (
+              <div>
+                <p className="text-gray-500">Комната</p>
+                <p className="font-medium">{artwork.room.name}</p>
+              </div>
+            )}
+            <div>
+              <p className="text-gray-500">В раме</p>
+              <p className="font-medium">{artwork.is_framed ? "Да" : "Нет"}</p>
+            </div>
+            {artwork.tags && artwork.tags.length > 0 && (
+              <div className="col-span-full">
+                <p className="text-gray-500">Теги</p>
+                <p className="font-medium">{artwork.tags.map((t) => `#${t}`).join(" ")}</p>
               </div>
             )}
           </div>
@@ -401,6 +468,36 @@ export default function ArtworkDetailPage({
 
       {/* Мокапы скрыты до появления рабочей image-модели (gpt-5-image / gemini блокируют RU IP).
           Компонент ArtworkMockup и стр. /mockup в коде остались — раскомментировать здесь и в sidebar.tsx, когда вернём. */}
+
+      {/* Модалка подтверждения удаления */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-2 text-lg font-bold text-gray-900">Удалить работу?</h2>
+            <p className="mb-1 text-sm text-gray-700">
+              «{artwork.title || "Без названия"}» — {artwork.artist.name_ru}
+            </p>
+            <p className="mb-4 text-xs text-gray-500">
+              Работа уйдёт в корзину — её можно восстановить позже.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {deleteMutation.isPending ? "Удаляю..." : "Удалить"}
+              </button>
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Модалка продажи */}
       {showSellModal && (

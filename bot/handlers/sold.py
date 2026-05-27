@@ -3,6 +3,7 @@ from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler, MessageHandler, CommandHandler, filters
 
 from bot.handlers.auth import require_whitelist
+from bot.handlers.auth import is_admin
 from bot.handlers.formatters import format_artwork_card
 from bot.handlers.keyboard import BTN_SOLD
 from bot.services.crm import crm
@@ -26,7 +27,7 @@ async def _enter_sold_flow(update: Update, context: ContextTypes.DEFAULT_TYPE, i
     clients = await crm.list_clients()
     context.user_data["clients"] = clients
 
-    msg = format_artwork_card(artwork) + "\n\nКто покупатель?"
+    msg = format_artwork_card(artwork, is_admin=is_admin(update)) + "\n\nКто покупатель?"
     if clients:
         msg += "\n\nСуществующие клиенты:"
         for c in clients[:10]:

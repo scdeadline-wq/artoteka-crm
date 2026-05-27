@@ -19,6 +19,12 @@ export interface ImageData {
   sort_order: number;
 }
 
+export interface Room {
+  id: number;
+  name: string;
+  sort_order: number;
+}
+
 export interface Artwork {
   id: number;
   inventory_number: number;
@@ -36,6 +42,10 @@ export interface Artwork {
   purchase_price: number | null;
   sale_price: number | null;
   notes: string | null;
+  room: Room | null;
+  is_framed: boolean;
+  tags: string[];
+  deleted_at: string | null;
   techniques: Technique[];
   images: ImageData[];
   created_at: string;
@@ -51,6 +61,10 @@ export interface ArtworkListItem {
   sale_price: number | null;
   primary_image: string | null;
   year: number | null;
+  room: Room | null;
+  is_framed: boolean;
+  tags: string[];
+  deleted_at: string | null;
 }
 
 export interface Client {
@@ -85,9 +99,9 @@ export interface Sale {
 export interface DashboardSummary {
   total_sales: number;
   total_revenue: number;
-  total_purchase: number;
+  total_purchase?: number;
   total_referral_fees: number;
-  margin: number;
+  margin?: number;
   artworks_by_status: Record<string, number>;
 }
 

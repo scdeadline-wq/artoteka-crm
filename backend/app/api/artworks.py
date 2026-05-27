@@ -1,10 +1,12 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth import get_current_user, is_admin, require_admin
 from app.models import Artwork, ArtworkStatus, Artist, Technique, Image, User
 from app.schemas.artwork import ArtworkCreate, ArtworkUpdate, ArtworkOut, ArtworkListOut
 from fastapi.responses import Response as FastAPIResponse
@@ -22,6 +24,13 @@ async def _next_inventory_number(db: AsyncSession) -> int:
     return result.scalar() + 1
 
 
+def _mask_for_role(out: ArtworkOut, user: User) -> ArtworkOut:
+    """purchase_price видна только админам (owner)."""
+    if not is_admin(user):
+        out.purchase_price = None
+    return out
+
+
 @router.get("/", response_model=list[ArtworkListOut])
 async def list_artworks(
     status: str | None = None,
@@ -29,7 +38,13 @@ async def list_artworks(
     technique_id: int | None = None,
     year_from: int | None = None,
     year_to: int | None = None,
+    is_framed: bool | None = None,
+    tag: str | None = None,
+    price_from: float | None = None,
+    price_to: float | None = None,
+    room_id: int | None = None,
     q: str | None = None,
+    sort: str | None = None,
     limit: int = Query(50, le=200),
     offset: int = 0,
     db: AsyncSession = Depends(get_db),
@@ -37,8 +52,11 @@ async def list_artworks(
 ):
     stmt = (
         select(Artwork)
-        .options(selectinload(Artwork.artist), selectinload(Artwork.images))
-        .order_by(Artwork.created_at.desc())
+        .options(
+            selectinload(Artwork.artist),
+            selectinload(Artwork.images),
+            selectinload(Artwork.room),
+        )
         .limit(limit)
         .offset(offset)
     )
@@ -52,6 +70,16 @@ async def list_artworks(
         stmt = stmt.where(Artwork.year >= year_from)
     if year_to is not None:
         stmt = stmt.where(Artwork.year <= year_to)
+    if is_framed is not None:
+        stmt = stmt.where(Artwork.is_framed == is_framed)
+    if tag:
+        stmt = stmt.where(Artwork.tags.any(tag))
+    if price_from is not None:
+        stmt = stmt.where(Artwork.sale_price >= price_from)
+    if price_to is not None:
+        stmt = stmt.where(Artwork.sale_price <= price_to)
+    if room_id is not None:
+        stmt = stmt.where(Artwork.room_id == room_id)
     if q:
         from sqlalchemy import or_ as sa_or
         q_clean = q.strip().lstrip("№#").strip()
@@ -64,6 +92,17 @@ async def list_artworks(
                 Artwork.artist.has(Artist.name_ru.ilike(f"%{q}%")),
                 Artwork.artist.has(Artist.name_en.ilike(f"%{q}%")),
             ))
+
+    # Сортировка. По фамилии = первое слово из artists.name_ru (фолбэк — вся строка).
+    if sort == "last_name":
+        stmt = stmt.join(Artwork.artist).order_by(
+            func.split_part(Artist.name_ru, " ", 1),
+            Artwork.inventory_number,
+        )
+    elif sort == "inventory":
+        stmt = stmt.order_by(Artwork.inventory_number)
+    else:
+        stmt = stmt.order_by(Artwork.created_at.desc())
 
     results = (await db.execute(stmt)).scalars().all()
     out = []
@@ -82,7 +121,52 @@ async def list_artworks(
             year=aw.year,
             width_cm=float(aw.width_cm) if aw.width_cm is not None else None,
             height_cm=float(aw.height_cm) if aw.height_cm is not None else None,
+            room=aw.room,
+            is_framed=aw.is_framed,
+            tags=list(aw.tags or []),
         ))
+    return out
+
+
+@router.get("/trash/")
+async def list_trashed_artworks(
+    limit: int = Query(50, le=200),
+    offset: int = 0,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_admin),
+):
+    """Корзина — мягко удалённые работы. Только admin (owner)."""
+    stmt = (
+        select(Artwork)
+        .options(
+            selectinload(Artwork.artist),
+            selectinload(Artwork.images),
+            selectinload(Artwork.room),
+        )
+        .where(Artwork.deleted_at.is_not(None))
+        .order_by(Artwork.deleted_at.desc())
+        .limit(limit)
+        .offset(offset)
+        .execution_options(include_deleted=True)
+    )
+    results = (await db.execute(stmt)).scalars().all()
+    out = []
+    for aw in results:
+        primary = next((img.url for img in aw.images if img.is_primary), None)
+        if not primary and aw.images:
+            primary = aw.images[0].url
+        out.append({
+            "id": aw.id,
+            "inventory_number": aw.inventory_number,
+            "title": aw.title,
+            "artist": {"id": aw.artist.id, "name_ru": aw.artist.name_ru, "name_en": aw.artist.name_en},
+            "status": aw.status.value,
+            "sale_price": float(aw.sale_price) if aw.sale_price is not None else None,
+            "primary_image": primary,
+            "year": aw.year,
+            "room": {"id": aw.room.id, "name": aw.room.name, "sort_order": aw.room.sort_order} if aw.room else None,
+            "deleted_at": aw.deleted_at.isoformat() if aw.deleted_at else None,
+        })
     return out
 
 
@@ -90,7 +174,7 @@ async def list_artworks(
 async def create_artwork(
     body: ArtworkCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     artist = await db.get(Artist, body.artist_id)
     if not artist:
@@ -104,6 +188,9 @@ async def create_artwork(
     inv_num = await _next_inventory_number(db)
     data = body.model_dump(exclude={"technique_ids"})
     data["status"] = ArtworkStatus(data["status"])
+    # purchase_price может задавать только admin
+    if not is_admin(user):
+        data.pop("purchase_price", None)
     artwork = Artwork(**data, inventory_number=inv_num)
     artwork.techniques = techniques
     db.add(artwork)
@@ -116,18 +203,19 @@ async def create_artwork(
             selectinload(Artwork.artist),
             selectinload(Artwork.techniques),
             selectinload(Artwork.images),
+            selectinload(Artwork.room),
         )
         .where(Artwork.id == artwork.id)
     )
     artwork = (await db.execute(stmt)).scalar_one()
-    return artwork
+    return _mask_for_role(ArtworkOut.model_validate(artwork), user)
 
 
 @router.get("/{artwork_id}/", response_model=ArtworkOut)
 async def get_artwork(
     artwork_id: int,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     stmt = (
         select(Artwork)
@@ -135,13 +223,14 @@ async def get_artwork(
             selectinload(Artwork.artist),
             selectinload(Artwork.techniques),
             selectinload(Artwork.images),
+            selectinload(Artwork.room),
         )
         .where(Artwork.id == artwork_id)
     )
     artwork = (await db.execute(stmt)).scalar_one_or_none()
     if not artwork:
         raise HTTPException(status_code=404, detail="Artwork not found")
-    return artwork
+    return _mask_for_role(ArtworkOut.model_validate(artwork), user)
 
 
 @router.put("/{artwork_id}/", response_model=ArtworkOut)
@@ -149,7 +238,7 @@ async def update_artwork(
     artwork_id: int,
     body: ArtworkUpdate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     stmt = (
         select(Artwork)
@@ -157,6 +246,7 @@ async def update_artwork(
             selectinload(Artwork.artist),
             selectinload(Artwork.techniques),
             selectinload(Artwork.images),
+            selectinload(Artwork.room),
         )
         .where(Artwork.id == artwork_id)
     )
@@ -170,6 +260,10 @@ async def update_artwork(
     if "status" in data:
         data["status"] = ArtworkStatus(data["status"])
 
+    # Менять purchase_price может только admin
+    if not is_admin(user):
+        data.pop("purchase_price", None)
+
     for key, value in data.items():
         setattr(artwork, key, value)
 
@@ -179,7 +273,52 @@ async def update_artwork(
 
     await db.commit()
     await db.refresh(artwork)
-    return artwork
+    return _mask_for_role(ArtworkOut.model_validate(artwork), user)
+
+
+@router.delete("/{artwork_id}/", status_code=200)
+async def soft_delete_artwork(
+    artwork_id: int,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_admin),
+):
+    """Мягкое удаление — работа помечается deleted_at, физически не стирается.
+    Восстановить через POST /artworks/{id}/restore/, посмотреть удалённые — GET /artworks/trash/.
+    """
+    stmt = (
+        select(Artwork)
+        .where(Artwork.id == artwork_id)
+        .execution_options(include_deleted=True)
+    )
+    artwork = (await db.execute(stmt)).scalar_one_or_none()
+    if not artwork:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+    if artwork.deleted_at is not None:
+        raise HTTPException(status_code=400, detail="Already deleted")
+    artwork.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+    return {"ok": True, "id": artwork_id, "deleted_at": artwork.deleted_at.isoformat()}
+
+
+@router.post("/{artwork_id}/restore/", status_code=200)
+async def restore_artwork(
+    artwork_id: int,
+    db: AsyncSession = Depends(get_db),
+    _user: User = Depends(require_admin),
+):
+    stmt = (
+        select(Artwork)
+        .where(Artwork.id == artwork_id)
+        .execution_options(include_deleted=True)
+    )
+    artwork = (await db.execute(stmt)).scalar_one_or_none()
+    if not artwork:
+        raise HTTPException(status_code=404, detail="Artwork not found")
+    if artwork.deleted_at is None:
+        raise HTTPException(status_code=400, detail="Not deleted")
+    artwork.deleted_at = None
+    await db.commit()
+    return {"ok": True, "id": artwork_id}
 
 
 @router.post("/analyze-image/")

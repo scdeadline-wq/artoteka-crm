@@ -151,5 +151,20 @@ class CRMClient:
         response.raise_for_status()
         return response.json()
 
+    async def soft_delete_artwork(self, artwork_id: int) -> dict[str, Any]:
+        response = await self._request("DELETE", f"/artworks/{artwork_id}/")
+        response.raise_for_status()
+        return response.json()
+
+    async def restore_artwork(self, artwork_id: int) -> dict[str, Any]:
+        response = await self._request("POST", f"/artworks/{artwork_id}/restore/")
+        response.raise_for_status()
+        return response.json()
+
+    async def list_trash(self, limit: int = 50) -> list[dict[str, Any]]:
+        response = await self._request("GET", "/artworks/trash/", params={"limit": limit})
+        response.raise_for_status()
+        return response.json()
+
 
 crm = CRMClient()

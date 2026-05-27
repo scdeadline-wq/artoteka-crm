@@ -4,6 +4,9 @@ from pydantic_settings import BaseSettings
 class BotSettings(BaseSettings):
     telegram_bot_token: str = ""
     allowed_telegram_ids: str = ""
+    # Подмножество allowed_telegram_ids. Эти юзеры видят закупочную цену
+    # и могут удалять работы (/delete, /trash). Назначает владелец бота.
+    admin_telegram_ids: str = ""
 
     crm_base_url: str = "http://backend:8000"
     # Публичный URL CRM (для Telegram — он сам качает фото по URL)
@@ -22,6 +25,12 @@ class BotSettings(BaseSettings):
         if not self.allowed_telegram_ids:
             return set()
         return {int(x.strip()) for x in self.allowed_telegram_ids.split(",") if x.strip()}
+
+    @property
+    def admin_ids(self) -> set[int]:
+        if not self.admin_telegram_ids:
+            return set()
+        return {int(x.strip()) for x in self.admin_telegram_ids.split(",") if x.strip()}
 
 
 settings = BotSettings()

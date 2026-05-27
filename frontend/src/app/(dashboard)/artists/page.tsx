@@ -29,6 +29,25 @@ export default function ArtistsPage() {
         .then((r) => r.data),
   });
 
+  // Группировка по первой букве фамилии (первое слово name_ru).
+  // Если первое слово начинается не с буквы — отдельная группа «#».
+  const grouped = (() => {
+    const groups = new Map<string, Artist[]>();
+    for (const a of artists) {
+      const lastName = a.name_ru.trim().split(/\s+/)[0] || "";
+      const first = lastName.charAt(0).toUpperCase();
+      const letter = /[A-ZА-ЯЁ]/u.test(first) ? first : "#";
+      const arr = groups.get(letter);
+      if (arr) arr.push(a);
+      else groups.set(letter, [a]);
+    }
+    return Array.from(groups.entries()).sort(([a], [b]) => {
+      if (a === "#") return 1;
+      if (b === "#") return -1;
+      return a.localeCompare(b, "ru");
+    });
+  })();
+
   const create = useMutation({
     mutationFn: () =>
       api.post("/artists", { name_ru: nameRu, name_en: nameEn || null, is_group: isGroup }),
@@ -117,35 +136,40 @@ export default function ArtistsPage() {
         </select>
       </div>
 
-      <div className="rounded-xl bg-white shadow-sm">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left text-xs text-gray-500">
-              <th className="px-4 py-3">ID</th>
-              <th className="px-4 py-3">Имя (рус)</th>
-              <th className="px-4 py-3">Имя (англ)</th>
-              <th className="px-4 py-3">Группа</th>
-            </tr>
-          </thead>
-          <tbody>
-            {artists.length === 0 && (
-              <tr>
-                <td colSpan={4} className="px-4 py-6 text-center text-gray-400">
-                  Никого не нашли
-                </td>
-              </tr>
-            )}
-            {artists.map((a) => (
-              <tr key={a.id} className="border-b last:border-0 hover:bg-gray-50">
-                <td className="px-4 py-3 text-gray-400">{a.id}</td>
-                <td className="px-4 py-3 font-medium text-gray-900">{a.name_ru}</td>
-                <td className="px-4 py-3 text-gray-600">{a.name_en || "—"}</td>
-                <td className="px-4 py-3">{a.is_group ? "Да" : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {artists.length === 0 ? (
+        <p className="py-6 text-center text-gray-400">Никого не нашли</p>
+      ) : (
+        <div className="space-y-4">
+          {grouped.map(([letter, items]) => (
+            <section key={letter} className="rounded-xl bg-white shadow-sm">
+              <header className="border-b px-4 py-2 text-sm font-semibold text-gray-500">
+                {letter}
+                <span className="ml-2 text-xs font-normal text-gray-400">
+                  {items.length}
+                </span>
+              </header>
+              <ul>
+                {items.map((a) => (
+                  <li
+                    key={a.id}
+                    className="flex items-center gap-4 border-b px-4 py-2.5 text-sm last:border-0 hover:bg-gray-50"
+                  >
+                    <span className="font-medium text-gray-900">{a.name_ru}</span>
+                    {a.name_en && (
+                      <span className="text-gray-500">{a.name_en}</span>
+                    )}
+                    {a.is_group && (
+                      <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                        группа
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

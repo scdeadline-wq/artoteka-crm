@@ -168,9 +168,11 @@ async def _do_create(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> int:
     await crm.upload_artwork_image(artwork["id"], state["image_bytes"], primary=True)
 
     full = await crm.get_artwork(artwork["id"])
+    from bot.config import settings as _bot_settings
+    admin = chat_id in _bot_settings.admin_ids
     await context.bot.send_message(
         chat_id=chat_id,
-        text="✅ Добавлено!\n" + format_artwork_card(full),
+        text="✅ Добавлено!\n" + format_artwork_card(full, is_admin=admin),
         parse_mode="HTML",
     )
 

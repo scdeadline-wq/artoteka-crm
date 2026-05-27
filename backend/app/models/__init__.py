@@ -1,6 +1,7 @@
 from app.models.user import User, UserRole
 from app.models.artist import Artist
 from app.models.technique import Technique
+from app.models.room import Room
 from app.models.artwork import Artwork, ArtworkStatus, Image, artwork_techniques
 from app.models.attachment import ArtworkAttachment, AttachmentKind
 from app.models.client import Client, ClientType, client_artists
@@ -11,6 +12,7 @@ __all__ = [
     "User", "UserRole",
     "Artist",
     "Technique",
+    "Room",
     "Artwork", "ArtworkStatus", "Image", "artwork_techniques",
     "ArtworkAttachment", "AttachmentKind",
     "Client", "ClientType", "client_artists",

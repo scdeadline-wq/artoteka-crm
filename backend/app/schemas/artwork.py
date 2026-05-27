@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 from app.schemas.artist import ArtistOut
 from app.schemas.technique import TechniqueOut
+from app.schemas.room import RoomOut
 
 
 class ImageOut(BaseModel):
@@ -31,6 +32,9 @@ class ArtworkCreate(BaseModel):
     purchase_price: Decimal | None = None
     sale_price: Decimal | None = None
     notes: str | None = None
+    room_id: int | None = None
+    is_framed: bool = False
+    tags: list[str] = []
     technique_ids: list[int] = []
 
 
@@ -49,6 +53,9 @@ class ArtworkUpdate(BaseModel):
     purchase_price: Decimal | None = None
     sale_price: Decimal | None = None
     notes: str | None = None
+    room_id: int | None = None
+    is_framed: bool | None = None
+    tags: list[str] | None = None
     technique_ids: list[int] | None = None
 
 
@@ -66,9 +73,13 @@ class ArtworkOut(BaseModel):
     location: str | None
     width_cm: float | None
     height_cm: float | None
-    purchase_price: Decimal | None
+    purchase_price: Decimal | None = None
     sale_price: Decimal | None
     notes: str | None
+    room: RoomOut | None = None
+    is_framed: bool
+    tags: list[str]
+    deleted_at: datetime | None = None
     techniques: list[TechniqueOut]
     images: list[ImageOut]
     created_at: datetime
@@ -88,5 +99,9 @@ class ArtworkListOut(BaseModel):
     year: int | None
     width_cm: float | None = None
     height_cm: float | None = None
+    room: RoomOut | None = None
+    is_framed: bool = False
+    tags: list[str] = []
+    deleted_at: datetime | None = None
 
     model_config = {"from_attributes": True}

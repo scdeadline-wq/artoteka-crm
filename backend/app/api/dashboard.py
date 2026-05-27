@@ -5,7 +5,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth import get_current_user, is_admin
 from app.models import Sale, Artwork, ArtworkStatus, Artist, User
 
 router = APIRouter()
@@ -14,7 +14,7 @@ router = APIRouter()
 @router.get("/summary/")
 async def summary(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     # Общая выручка и кол-во продаж
     sales_result = await db.execute(
@@ -43,14 +43,17 @@ async def summary(
 
     margin = Decimal(str(total_revenue)) - Decimal(str(total_purchase)) - Decimal(str(total_referral_fees))
 
-    return {
+    result = {
         "total_sales": total_sales,
         "total_revenue": float(total_revenue),
-        "total_purchase": float(total_purchase),
         "total_referral_fees": float(total_referral_fees),
-        "margin": float(margin),
         "artworks_by_status": statuses,
     }
+    # Закупка и маржа — только для admin
+    if is_admin(user):
+        result["total_purchase"] = float(total_purchase)
+        result["margin"] = float(margin)
+    return result
 
 
 @router.get("/top-artists/")

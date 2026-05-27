@@ -1,8 +1,17 @@
 import { create } from "zustand";
 
+export type UserRole = "owner" | "admin" | "manager" | "viewer";
+
+export interface AuthUser {
+  id: number;
+  name: string;
+  email: string;
+  role: UserRole;
+}
+
 interface AuthState {
   token: string | null;
-  user: { id: number; name: string; email: string; role: string } | null;
+  user: AuthUser | null;
   setAuth: (token: string, user: AuthState["user"]) => void;
   logout: () => void;
 }
@@ -19,3 +28,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ token: null, user: null });
   },
 }));
+
+// owner и admin — обе админские роли (видят закупку, могут CRUD/удаление/комнаты/пользователей).
+// Назначать роль owner может только owner.
+export const isAdmin = (user: AuthUser | null): boolean =>
+  user?.role === "owner" || user?.role === "admin";
+
+export const isOwner = (user: AuthUser | null): boolean =>
+  user?.role === "owner";

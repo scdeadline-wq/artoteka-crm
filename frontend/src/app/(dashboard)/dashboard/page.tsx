@@ -16,8 +16,12 @@ export default function DashboardPage() {
 
   const cards = [
     { label: "Выручка", value: `${data.total_revenue.toLocaleString("ru")} ₽` },
-    { label: "Расходы на закупку", value: `${data.total_purchase.toLocaleString("ru")} ₽` },
-    { label: "Маржа", value: `${data.margin.toLocaleString("ru")} ₽` },
+    ...(data.total_purchase != null
+      ? [{ label: "Расходы на закупку", value: `${data.total_purchase.toLocaleString("ru")} ₽` }]
+      : []),
+    ...(data.margin != null
+      ? [{ label: "Маржа", value: `${data.margin.toLocaleString("ru")} ₽` }]
+      : []),
     { label: "Продаж", value: data.total_sales },
     { label: "Реферальные", value: `${data.total_referral_fees.toLocaleString("ru")} ₽` },
   ];

@@ -6,6 +6,7 @@ from sqlalchemy import (
     String, Text, Enum, ForeignKey, Integer, Numeric,
     Boolean, DateTime, Table, Column, func,
 )
+from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -48,6 +49,10 @@ class Artwork(Base):
     purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
     sale_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
     notes: Mapped[str | None] = mapped_column(Text, default=None)
+    room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id", ondelete="SET NULL"), default=None, index=True)
+    is_framed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    tags: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -55,6 +60,7 @@ class Artwork(Base):
     techniques: Mapped[list["Technique"]] = relationship(secondary=artwork_techniques)
     images: Mapped[list["Image"]] = relationship(back_populates="artwork", cascade="all, delete-orphan")
     attachments: Mapped[list["ArtworkAttachment"]] = relationship(back_populates="artwork", cascade="all, delete-orphan")
+    room: Mapped["Room | None"] = relationship(back_populates="artworks")
 
 
 class Image(Base):

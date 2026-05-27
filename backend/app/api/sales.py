@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.auth import get_current_user
+from app.auth import get_current_user, is_admin
 from app.models import Sale, Artwork, ArtworkStatus, Client, User
 from app.schemas.sale import SaleCreate, SaleOut
 
@@ -14,7 +14,7 @@ router = APIRouter()
 @router.get("/", response_model=list[SaleOut])
 async def list_sales(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     stmt = (
         select(Sale)
@@ -26,14 +26,14 @@ async def list_sales(
         .order_by(Sale.sold_at.desc())
     )
     sales = (await db.execute(stmt)).scalars().all()
-    return [_sale_to_out(s) for s in sales]
+    return [_sale_to_out(s, user) for s in sales]
 
 
 @router.post("/", response_model=SaleOut, status_code=201)
 async def create_sale(
     body: SaleCreate,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     artwork = await db.get(Artwork, body.artwork_id)
     if not artwork:
@@ -61,12 +61,15 @@ async def create_sale(
         .where(Sale.id == sale.id)
     )
     sale = (await db.execute(stmt)).scalar_one()
-    return _sale_to_out(sale)
+    return _sale_to_out(sale, user)
 
 
-def _sale_to_out(sale: Sale) -> SaleOut:
+def _sale_to_out(sale: Sale, user: User) -> SaleOut:
+    admin = is_admin(user)
+    purchase_price = sale.artwork.purchase_price if admin else None
+
     margin = None
-    if sale.artwork.purchase_price is not None:
+    if admin and sale.artwork.purchase_price is not None:
         margin = sale.sold_price - sale.artwork.purchase_price
         if sale.referral_fee:
             margin -= sale.referral_fee
@@ -81,7 +84,7 @@ def _sale_to_out(sale: Sale) -> SaleOut:
         referral_id=sale.referral_id,
         referral_name=sale.referral.name if sale.referral else None,
         sold_price=sale.sold_price,
-        purchase_price=sale.artwork.purchase_price,
+        purchase_price=purchase_price,
         referral_fee=sale.referral_fee,
         margin=margin,
         notes=sale.notes,

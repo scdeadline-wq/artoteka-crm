@@ -9,6 +9,7 @@ from app.database import Base
 
 class UserRole(str, enum.Enum):
     owner = "owner"
+    admin = "admin"
     manager = "manager"
     viewer = "viewer"
 

@@ -80,6 +80,31 @@
 ssh root@185.152.94.51 "cd /opt/artoteka-crm && ./deploy/update.sh backend"
 ```
 
+`update.sh` перед каждым обновлением:
+1. Записывает текущий git SHA в `deploy/.last_deploy_sha`.
+2. Записывает текущую alembic-ревизию в `deploy/.last_alembic_rev`.
+3. Делает `pg_dump` в `MinIO local/backups/pre-deploy/` (retention 7 дней).
+4. Только затем — `git pull`, `alembic upgrade head`, `docker compose up -d --build`.
+
+## Откат деплоя
+
+```bash
+ssh root@185.152.94.51 "cd /opt/artoteka-crm && ./deploy/rollback.sh"
+```
+
+Что делает:
+1. `alembic downgrade` до ревизии из `.last_alembic_rev` (на ещё активном новом коде — он знает миграцию).
+2. `git checkout` на SHA из `.last_deploy_sha`.
+3. `docker compose up -d --build`.
+
+Если миграция-downgrade не отработала и БД покорёжило — восстановить из pre-deploy-дампа (инструкция выводится в конце `rollback.sh`).
+
+**Первый запуск на VPS** (когда alembic-таблицы ещё нет в БД):
+```bash
+docker compose -f deploy/docker-compose.vps.yml exec backend alembic stamp 0001_baseline
+```
+Это пометит текущую БД как baseline. После этого `update.sh` будет применять только новые миграции.
+
 ## Сетевая особенность: IPv6 отключён
 
 На VPS IPv6 принудительно отключён через `/etc/sysctl.d/99-disable-ipv6.conf`,

@@ -3,9 +3,13 @@
 import { useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import api from "@/lib/api";
+import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { Sale } from "@/lib/types";
 
 export default function SalesPage() {
+  const user = useAuthStore((s) => s.user);
+  const isAdmin = isAdminRole(user);
+
   const { data: sales = [] } = useQuery<Sale[]>({
     queryKey: ["sales"],
     queryFn: () => api.get("/sales").then((r) => r.data),
@@ -28,12 +32,14 @@ export default function SalesPage() {
             <p className="text-xs text-gray-500">Выручка</p>
             <p className="text-lg font-bold">{totalRevenue.toLocaleString("ru")} ₽</p>
           </div>
-          <div className="rounded-xl bg-white px-4 py-3 shadow-sm">
-            <p className="text-xs text-gray-500">Маржа</p>
-            <p className={`text-lg font-bold ${totalMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {totalMargin.toLocaleString("ru")} ₽
-            </p>
-          </div>
+          {isAdmin && (
+            <div className="rounded-xl bg-white px-4 py-3 shadow-sm">
+              <p className="text-xs text-gray-500">Маржа</p>
+              <p className={`text-lg font-bold ${totalMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {totalMargin.toLocaleString("ru")} ₽
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -47,8 +53,8 @@ export default function SalesPage() {
               <th className="px-4 py-3">Покупатель</th>
               <th className="px-4 py-3">Реферал</th>
               <th className="px-4 py-3 text-right">Продажа</th>
-              <th className="px-4 py-3 text-right">Закупка</th>
-              <th className="px-4 py-3 text-right">Маржа</th>
+              {isAdmin && <th className="px-4 py-3 text-right">Закупка</th>}
+              {isAdmin && <th className="px-4 py-3 text-right">Маржа</th>}
             </tr>
           </thead>
           <tbody>
@@ -68,18 +74,22 @@ export default function SalesPage() {
                 <td className="px-4 py-3 text-right font-medium">
                   {Number(s.sold_price).toLocaleString("ru")} ₽
                 </td>
-                <td className="px-4 py-3 text-right text-gray-500">
-                  {s.purchase_price ? `${Number(s.purchase_price).toLocaleString("ru")} ₽` : "—"}
-                </td>
-                <td className={`px-4 py-3 text-right font-semibold ${
-                  s.margin && Number(s.margin) > 0 ? "text-green-600" : s.margin ? "text-red-600" : ""
-                }`}>
-                  {s.margin != null ? `${Number(s.margin).toLocaleString("ru")} ₽` : "—"}
-                </td>
+                {isAdmin && (
+                  <td className="px-4 py-3 text-right text-gray-500">
+                    {s.purchase_price ? `${Number(s.purchase_price).toLocaleString("ru")} ₽` : "—"}
+                  </td>
+                )}
+                {isAdmin && (
+                  <td className={`px-4 py-3 text-right font-semibold ${
+                    s.margin && Number(s.margin) > 0 ? "text-green-600" : s.margin ? "text-red-600" : ""
+                  }`}>
+                    {s.margin != null ? `${Number(s.margin).toLocaleString("ru")} ₽` : "—"}
+                  </td>
+                )}
               </tr>
             ))}
             {sales.length === 0 && (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">Нет продаж</td></tr>
+              <tr><td colSpan={isAdmin ? 8 : 6} className="px-4 py-8 text-center text-gray-400">Нет продаж</td></tr>
             )}
           </tbody>
         </table>
