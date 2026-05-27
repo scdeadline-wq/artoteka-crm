@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
-from app.api import artworks, artists, techniques, auth, clients, sales, dashboard, import_airtable, rooms
+from app.api import artworks, artists, techniques, auth, clients, sales, dashboard, import_airtable, rooms, users
 from app.services.storage import get_image_bytes
 
 app = FastAPI(
@@ -27,6 +27,7 @@ app.include_router(clients.router, prefix="/clients", tags=["clients"])
 app.include_router(sales.router, prefix="/sales", tags=["sales"])
 app.include_router(dashboard.router, prefix="/dashboard", tags=["dashboard"])
 app.include_router(rooms.router, prefix="/rooms", tags=["rooms"])
+app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(import_airtable.router, prefix="/import", tags=["import"])
 
 

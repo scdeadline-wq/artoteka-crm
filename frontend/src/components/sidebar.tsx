@@ -11,6 +11,7 @@ import {
   LogOut,
   Sofa,
   DoorOpen,
+  UserCog,
 } from "lucide-react";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 
@@ -21,6 +22,7 @@ const NAV = [
   { href: "/clients", label: "Клиенты", icon: Users },
   { href: "/sales", label: "Продажи", icon: Receipt },
   { href: "/rooms", label: "Комнаты", icon: DoorOpen, adminOnly: true },
+  { href: "/users", label: "Пользователи", icon: UserCog, adminOnly: true },
   // { href: "/mockup", label: "Мокап", icon: Sofa },  // скрыто: image-модель недоступна (geo-блок)
 ];
 
