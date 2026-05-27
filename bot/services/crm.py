@@ -166,5 +166,10 @@ class CRMClient:
         response.raise_for_status()
         return response.json()
 
+    async def list_rooms(self) -> list[dict[str, Any]]:
+        response = await self._request("GET", "/rooms/")
+        response.raise_for_status()
+        return response.json()
+
 
 crm = CRMClient()

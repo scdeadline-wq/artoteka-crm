@@ -10,8 +10,9 @@ import {
   Palette,
   LogOut,
   Sofa,
+  DoorOpen,
 } from "lucide-react";
-import { useAuthStore } from "@/lib/store";
+import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 
 const NAV = [
   { href: "/dashboard", label: "Дашборд", icon: LayoutDashboard },
@@ -19,12 +20,16 @@ const NAV = [
   { href: "/artists", label: "Художники", icon: Palette },
   { href: "/clients", label: "Клиенты", icon: Users },
   { href: "/sales", label: "Продажи", icon: Receipt },
+  { href: "/rooms", label: "Комнаты", icon: DoorOpen, adminOnly: true },
   // { href: "/mockup", label: "Мокап", icon: Sofa },  // скрыто: image-модель недоступна (geo-блок)
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const user = useAuthStore((s) => s.user);
   const logout = useAuthStore((s) => s.logout);
+  const isAdmin = isAdminRole(user);
+  const items = NAV.filter((it) => !it.adminOnly || isAdmin);
 
   return (
     <aside className="flex h-screen w-56 flex-col border-r bg-white">
@@ -32,7 +37,7 @@ export default function Sidebar() {
         <h1 className="text-xl font-bold text-gray-900">Артотека</h1>
       </div>
       <nav className="flex-1 space-y-1 px-3">
-        {NAV.map(({ href, label, icon: Icon }) => {
+        {items.map(({ href, label, icon: Icon }) => {
           const active = pathname.startsWith(href);
           return (
             <Link

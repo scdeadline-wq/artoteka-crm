@@ -10,7 +10,7 @@ import Link from "next/link";
 import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
-import type { Artwork, Artist, Technique, Client } from "@/lib/types";
+import type { Artwork, Artist, Technique, Client, Room } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 // import ArtworkMockup from "@/components/mockup";  // скрыто, image-модель недоступна
 
@@ -63,6 +63,12 @@ export default function ArtworkDetailPage({
     enabled: editing,
   });
 
+  const { data: rooms = [] } = useQuery<Room[]>({
+    queryKey: ["rooms"],
+    queryFn: () => api.get("/rooms/").then((r) => r.data),
+    enabled: editing,
+  });
+
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ["clients"],
     queryFn: () => api.get("/clients").then((r) => r.data),
@@ -86,6 +92,7 @@ export default function ArtworkDetailPage({
       height_cm: artwork.height_cm || "",
       purchase_price: artwork.purchase_price || "",
       sale_price: artwork.sale_price || "",
+      room_id: artwork.room?.id ?? 0,
       is_framed: !!artwork.is_framed,
       tags: artwork.tags || [],
       technique_ids: artwork.techniques.map((t) => t.id),
@@ -106,6 +113,7 @@ export default function ArtworkDetailPage({
         description: form.description || null,
         condition: form.condition || null,
         location: form.location || null,
+        room_id: form.room_id ? Number(form.room_id) : null,
         is_framed: !!form.is_framed,
         tags: form.tags || [],
       };
@@ -336,6 +344,19 @@ export default function ArtworkDetailPage({
             <div>
               <label className="mb-1 block text-xs text-gray-500">Цена продажи (₽)</label>
               <input type="number" value={form.sale_price as string} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Комната</label>
+              <select
+                value={(form.room_id as number) || 0}
+                onChange={(e) => setForm({ ...form, room_id: Number(e.target.value) })}
+                className="w-full rounded border px-2 py-1.5 text-sm"
+              >
+                <option value={0}>— не указана —</option>
+                {rooms.map((r) => (
+                  <option key={r.id} value={r.id}>{r.name}</option>
+                ))}
+              </select>
             </div>
             <div className="flex items-end">
               <label className="flex items-center gap-2 text-sm">

@@ -7,7 +7,7 @@ import { Plus, Search, Trash2 } from "lucide-react";
 import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
-import type { ArtworkListItem, Artist, Technique } from "@/lib/types";
+import type { ArtworkListItem, Artist, Technique, Room } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -31,6 +31,8 @@ export default function ArtworksPage() {
   const [priceTo, setPriceTo] = useState("");
   const [framedFilter, setFramedFilter] = useState<"" | "true" | "false">("");
   const [sort, setSort] = useState<"" | "last_name" | "inventory">("");
+  // 0 = «Все»; иначе id комнаты.
+  const [roomId, setRoomId] = useState<number>(0);
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminRole(user);
 
@@ -42,11 +44,15 @@ export default function ArtworksPage() {
     queryKey: ["techniques-for-filter"],
     queryFn: () => api.get("/techniques").then((r) => r.data),
   });
+  const { data: rooms = [] } = useQuery<Room[]>({
+    queryKey: ["rooms"],
+    queryFn: () => api.get("/rooms/").then((r) => r.data),
+  });
 
   const { data: artworks = [], isLoading } = useQuery<ArtworkListItem[]>({
     queryKey: [
       "artworks", search, statusFilter, artistFilter, techniqueFilter,
-      yearFrom, yearTo, tagFilter, priceFrom, priceTo, framedFilter, sort,
+      yearFrom, yearTo, tagFilter, priceFrom, priceTo, framedFilter, sort, roomId,
     ],
     queryFn: () =>
       api
@@ -63,6 +69,7 @@ export default function ArtworksPage() {
             price_to: priceTo || undefined,
             is_framed: framedFilter || undefined,
             sort: sort || undefined,
+            room_id: roomId || undefined,
           },
         })
         .then((r) => r.data),
@@ -108,6 +115,34 @@ export default function ArtworksPage() {
           </Link>
         </div>
       </div>
+
+      {rooms.length > 0 && (
+        <div className="mb-3 flex flex-wrap gap-1.5 border-b">
+          <button
+            onClick={() => setRoomId(0)}
+            className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
+              roomId === 0
+                ? "border-gray-900 font-medium text-gray-900"
+                : "border-transparent text-gray-500 hover:text-gray-900"
+            }`}
+          >
+            Все
+          </button>
+          {rooms.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => setRoomId(r.id)}
+              className={`-mb-px border-b-2 px-3 py-2 text-sm transition-colors ${
+                roomId === r.id
+                  ? "border-gray-900 font-medium text-gray-900"
+                  : "border-transparent text-gray-500 hover:text-gray-900"
+              }`}
+            >
+              {r.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <div className="relative min-w-[220px] flex-1">
@@ -264,6 +299,7 @@ export default function ArtworksPage() {
                 </div>
                 <p className="mt-1 text-xs text-gray-400">
                   #{aw.inventory_number}
+                  {aw.room ? ` · ${aw.room.name}` : ""}
                 </p>
               </div>
             </Link>

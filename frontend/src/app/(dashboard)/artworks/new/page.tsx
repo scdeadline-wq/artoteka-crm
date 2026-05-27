@@ -6,7 +6,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Upload, Sparkles, Loader2, X, Check, Wand2, ExternalLink } from "lucide-react";
 import api from "@/lib/api";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
-import type { Artist, Technique } from "@/lib/types";
+import type { Artist, Technique, Room } from "@/lib/types";
 
 type Step = "upload" | "review";
 
@@ -52,6 +52,10 @@ export default function NewArtworkPage() {
     queryKey: ["techniques"],
     queryFn: () => api.get("/techniques").then((r) => r.data),
   });
+  const { data: rooms = [] } = useQuery<Room[]>({
+    queryKey: ["rooms"],
+    queryFn: () => api.get("/rooms/").then((r) => r.data),
+  });
 
   const [form, setForm] = useState({
     title: "",
@@ -66,6 +70,7 @@ export default function NewArtworkPage() {
     height_cm: "",
     purchase_price: "",
     sale_price: "",
+    room_id: 0,
     is_framed: false,
     tags: "",
     status: "draft",
@@ -150,6 +155,7 @@ export default function NewArtworkPage() {
         width_cm: form.width_cm ? Number(form.width_cm) : null,
         height_cm: form.height_cm ? Number(form.height_cm) : null,
         sale_price: form.sale_price ? Number(form.sale_price) : null,
+        room_id: form.room_id || null,
         is_framed: !!form.is_framed,
         tags: form.tags
           .split(",")
@@ -669,6 +675,21 @@ export default function NewArtworkPage() {
                 className="w-full rounded-lg border px-3 py-2 text-sm"
                 placeholder="Склад, адрес"
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Комната</label>
+              <select
+                value={form.room_id}
+                onChange={(e) => setForm({ ...form, room_id: Number(e.target.value) })}
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+              >
+                <option value={0}>— не указана —</option>
+                {rooms.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="flex items-end">
               <label className="flex items-center gap-2 text-sm">

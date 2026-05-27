@@ -116,6 +116,21 @@ def _edit_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(rows)
 
 
+def _rooms_keyboard(rooms: list[dict]) -> InlineKeyboardMarkup:
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for r in rooms:
+        name = (r.get("name") or "?")[:30]
+        row.append(InlineKeyboardButton(name, callback_data=f"room:{r['id']}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([InlineKeyboardButton("— без комнаты —", callback_data="room:none")])
+    return InlineKeyboardMarkup(rows)
+
+
 def _format_preview(parsed: dict) -> str:
     msg = "Превью:\n"
     msg += f"Название: {parsed.get('title') or '—'}\n"
@@ -163,7 +178,7 @@ async def _do_create(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> int:
             parsed.get("technique"), parsed,
         )
 
-    payload = _build_artwork_payload(parsed, artist_id, technique_ids)
+    payload = _build_artwork_payload(parsed, artist_id, technique_ids, room_id=state.get("room_id"))
     artwork = await crm.create_artwork(payload)
     await crm.upload_artwork_image(artwork["id"], state["image_bytes"], primary=True)
 
@@ -223,7 +238,32 @@ async def confirm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(FIELD_PROMPTS.get(field, "Введи новое значение:"))
         return CONFIRM
 
-    # add:confirm
+    if query.data.startswith("room:"):
+        kind = query.data.split(":", 1)[1]
+        if kind == "none":
+            state["room_id"] = None
+        else:
+            try:
+                state["room_id"] = int(kind)
+            except ValueError:
+                return CONFIRM
+        state["room_picked"] = True
+        await query.edit_message_reply_markup(reply_markup=None)
+        return await _do_create(query.message.chat_id, context)
+
+    # add:confirm — перед созданием спросим комнату (если её ещё не выбрали и есть варианты).
+    if not state.get("room_picked"):
+        try:
+            rooms = await crm.list_rooms()
+        except Exception:
+            rooms = []
+        if rooms:
+            await query.edit_message_text(
+                _format_preview(state.get("parsed", {})) + "\nВ какую комнату?",
+                reply_markup=_rooms_keyboard(rooms),
+            )
+            return CONFIRM
+        state["room_picked"] = True
     await query.edit_message_reply_markup(reply_markup=None)
     return await _do_create(query.message.chat_id, context)
 
@@ -335,7 +375,12 @@ async def _match_techniques(technique_text: str | None) -> list[int]:
     return [best_id] if best_id else []
 
 
-def _build_artwork_payload(parsed: dict, artist_id: int, technique_ids: list[int]) -> dict:
+def _build_artwork_payload(
+    parsed: dict,
+    artist_id: int,
+    technique_ids: list[int],
+    room_id: int | None = None,
+) -> dict:
     payload = {
         "title": parsed.get("title"),
         "artist_id": artist_id,
@@ -346,6 +391,7 @@ def _build_artwork_payload(parsed: dict, artist_id: int, technique_ids: list[int
         "width_cm": float(parsed["width_cm"]) if parsed.get("width_cm") else None,
         "height_cm": float(parsed["height_cm"]) if parsed.get("height_cm") else None,
         "sale_price": float(parsed["sale_price"]) if parsed.get("sale_price") else None,
+        "room_id": room_id,
         "status": "draft",
         "technique_ids": technique_ids,
     }
@@ -371,7 +417,7 @@ def build_add_handler() -> ConversationHandler:
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_text),
             ],
             CONFIRM: [
-                CallbackQueryHandler(confirm_callback, pattern=r"^(add:|edit:)"),
+                CallbackQueryHandler(confirm_callback, pattern=r"^(add:|edit:|room:)"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, confirm_text),
             ],
         },
