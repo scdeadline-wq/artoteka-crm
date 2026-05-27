@@ -1,5 +1,10 @@
-"""Форматирование ответов бота."""
+"""Форматирование ответов бота и общий рендер результатов поиска."""
+from io import BytesIO
 from html import escape
+
+from telegram import InputMediaPhoto, Message
+
+from bot.services.crm import crm
 
 STATUS_LABEL = {
     "draft": "Черновик",
@@ -56,3 +61,47 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
         lines.append("Теги: " + " ".join(f"#{escape(str(t))}" for t in tags))
     lines.append(f"Статус: {STATUS_LABEL.get(status, status)}")
     return "\n".join(lines)
+
+
+async def send_artwork_results(
+    message: Message,
+    artworks: list[dict],
+    *,
+    is_admin: bool,
+    limit: int = 5,
+) -> None:
+    """Печатает в чат до `limit` карточек с фото. Без результатов — пишет «Ничего не нашёл»."""
+    if not artworks:
+        await message.reply_text("Ничего не нашёл")
+        return
+    if len(artworks) > limit:
+        await message.reply_text(f"Нашёл {len(artworks)} работ — показываю первые {limit}:")
+        artworks = artworks[:limit]
+    for artwork in artworks:
+        full = await crm.get_artwork(artwork["id"])
+        caption = format_artwork_card(full, is_admin=is_admin)
+        images = sorted(
+            full.get("images") or [],
+            key=lambda i: (not i.get("is_primary"), i.get("sort_order", 0)),
+        )
+        photo_blobs: list[bytes] = []
+        for img in images[:10]:
+            url = img.get("url")
+            if not url:
+                continue
+            try:
+                photo_blobs.append(await crm.download_image(url))
+            except Exception:
+                continue
+        try:
+            if len(photo_blobs) >= 2:
+                media = [InputMediaPhoto(media=BytesIO(photo_blobs[0]), caption=caption, parse_mode="HTML")]
+                media += [InputMediaPhoto(media=BytesIO(b)) for b in photo_blobs[1:]]
+                await message.reply_media_group(media=media)
+                continue
+            if len(photo_blobs) == 1:
+                await message.reply_photo(photo=BytesIO(photo_blobs[0]), caption=caption, parse_mode="HTML")
+                continue
+        except Exception:
+            pass
+        await message.reply_text(caption, parse_mode="HTML")

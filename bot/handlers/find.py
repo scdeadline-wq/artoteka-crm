@@ -1,6 +1,4 @@
-from io import BytesIO
-
-from telegram import Update, InputMediaPhoto
+from telegram import Update
 from telegram.ext import (
     ContextTypes,
     ConversationHandler,
@@ -10,7 +8,7 @@ from telegram.ext import (
 )
 
 from bot.handlers.auth import is_admin, require_whitelist
-from bot.handlers.formatters import format_artwork_card
+from bot.handlers.formatters import send_artwork_results
 from bot.handlers.keyboard import BTN_FIND
 from bot.services.crm import crm
 
@@ -35,41 +33,7 @@ async def _do_search(update: Update, query: str) -> None:
     else:
         filtered = await crm.search_artworks(query=q, limit=200)
 
-    if not filtered:
-        await update.message.reply_text("Ничего не нашёл")
-        return
-
-    if len(filtered) > 5:
-        await update.message.reply_text(f"Нашёл {len(filtered)} работ — показываю первые 5:")
-        filtered = filtered[:5]
-
-    for artwork in filtered:
-        full = await crm.get_artwork(artwork["id"])
-        caption = format_artwork_card(full, is_admin=admin)
-        images = sorted(full.get("images") or [], key=lambda i: (not i.get("is_primary"), i.get("sort_order", 0)))
-
-        photo_blobs: list[bytes] = []
-        for img in images[:10]:
-            url = img.get("url")
-            if not url:
-                continue
-            try:
-                photo_blobs.append(await crm.download_image(url))
-            except Exception:
-                continue
-
-        try:
-            if len(photo_blobs) >= 2:
-                media = [InputMediaPhoto(media=BytesIO(photo_blobs[0]), caption=caption, parse_mode="HTML")]
-                media += [InputMediaPhoto(media=BytesIO(b)) for b in photo_blobs[1:]]
-                await update.message.reply_media_group(media=media)
-                continue
-            if len(photo_blobs) == 1:
-                await update.message.reply_photo(photo=BytesIO(photo_blobs[0]), caption=caption, parse_mode="HTML")
-                continue
-        except Exception:
-            pass
-        await update.message.reply_text(caption, parse_mode="HTML")
+    await send_artwork_results(update.message, filtered, is_admin=admin)
 
 
 @require_whitelist

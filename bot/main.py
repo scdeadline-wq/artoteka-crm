@@ -13,6 +13,7 @@ from bot.handlers.add import build_add_handler
 from bot.handlers.client import build_client_handler
 from bot.handlers.delete import build_delete_handlers
 from bot.handlers.find import build_find_handler
+from bot.handlers.search import build_search_handler
 from bot.handlers.sold import build_sold_handler
 from bot.handlers.start import help_cmd, start
 from bot.services.crm import crm
@@ -27,6 +28,7 @@ logger = logging.getLogger("artspace-bot")
 COMMANDS = [
     BotCommand("add", "Добавить работу"),
     BotCommand("find", "Найти работу"),
+    BotCommand("search", "Поиск по фильтрам"),
     BotCommand("sold", "Отметить продажу"),
     BotCommand("client", "Добавить клиента"),
     BotCommand("delete", "Удалить работу (admin)"),
@@ -61,6 +63,7 @@ def main() -> None:
     app.add_handler(CommandHandler("help", help_cmd))
     app.add_handler(build_add_handler())
     app.add_handler(build_find_handler())
+    app.add_handler(build_search_handler())
     app.add_handler(build_sold_handler())
     app.add_handler(build_client_handler())
     for h in build_delete_handlers():

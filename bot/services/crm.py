@@ -171,5 +171,36 @@ class CRMClient:
         response.raise_for_status()
         return response.json()
 
+    async def search_artworks_advanced(
+        self,
+        *,
+        tag: str | None = None,
+        technique_id: int | None = None,
+        is_framed: bool | None = None,
+        price_from: float | None = None,
+        price_to: float | None = None,
+        room_id: int | None = None,
+        status: str | None = None,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {"limit": limit}
+        if tag:
+            params["tag"] = tag
+        if technique_id:
+            params["technique_id"] = technique_id
+        if is_framed is not None:
+            params["is_framed"] = "true" if is_framed else "false"
+        if price_from is not None:
+            params["price_from"] = price_from
+        if price_to is not None:
+            params["price_to"] = price_to
+        if room_id is not None:
+            params["room_id"] = room_id
+        if status:
+            params["status"] = status
+        response = await self._request("GET", "/artworks/", params=params)
+        response.raise_for_status()
+        return response.json()
+
 
 crm = CRMClient()
