@@ -38,22 +38,26 @@ else
   echo "    alembic ревизия: $CURRENT_REV"
 fi
 
-echo "==> [2/6] pre-deploy dump БД -> MinIO pre-deploy/"
-TMP="/tmp/artoteka-pre-deploy-${TS}-${SHORT_SHA}.dump.gz"
-cleanup() { rm -f "$TMP"; }
-trap cleanup EXIT
+echo "==> [2/6] pre-deploy dump БД"
+mkdir -p deploy/backups
+DUMP="deploy/backups/pre-deploy-${TS}-${SHORT_SHA}.dump.gz"
+$COMPOSE exec -T postgres pg_dump -U artoteka -F c artoteka | gzip > "$DUMP"
+echo "    локальный дамп: $(du -h "$DUMP" | cut -f1) -> $DUMP"
+# Retention: держим последние 7 локальных дампов
+ls -1t deploy/backups/pre-deploy-*.dump.gz 2>/dev/null | tail -n +8 | xargs -r rm -f
 
-$COMPOSE exec -T postgres pg_dump -U artoteka -F c artoteka | gzip > "$TMP"
-SIZE=$(du -h "$TMP" | cut -f1)
-echo "    dump: $SIZE -> $(basename "$TMP")"
-
-docker cp "$TMP" deploy-minio-1:/tmp/pre-deploy.gz
-docker exec deploy-minio-1 mc cp /tmp/pre-deploy.gz \
-  "local/backups/pre-deploy/$(basename "$TMP")"
-docker exec deploy-minio-1 rm -f /tmp/pre-deploy.gz
-# Retention: pre-deploy дампы храним 7 дней
-docker exec deploy-minio-1 mc rm --recursive --force --older-than "7d" \
-  "local/backups/pre-deploy/" >/dev/null 2>&1 || true
+# Дубль в MinIO — НЕ критично: при неудаче (нет прав/бакета) продолжаем,
+# локальный дамп уже снят и является основной точкой восстановления.
+if docker cp "$DUMP" deploy-minio-1:/tmp/pre-deploy.gz 2>/dev/null \
+   && docker exec deploy-minio-1 mc cp /tmp/pre-deploy.gz \
+        "local/backups/pre-deploy/$(basename "$DUMP")" 2>/dev/null; then
+  docker exec deploy-minio-1 rm -f /tmp/pre-deploy.gz 2>/dev/null || true
+  docker exec deploy-minio-1 mc rm --recursive --force --older-than "7d" \
+    "local/backups/pre-deploy/" >/dev/null 2>&1 || true
+  echo "    + залит в MinIO ✓"
+else
+  echo "    ⚠️  MinIO-загрузка не удалась — оставляю только локальный дамп в deploy/backups/"
+fi
 
 echo "==> [3/6] git pull"
 git pull --ff-only
