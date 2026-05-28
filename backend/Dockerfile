@@ -3,14 +3,13 @@ FROM python:3.13-slim
 WORKDIR /app
 
 # libpq-dev — для psycopg/asyncpg сборки.
-# libcairo2 libpango-1.0-0 libpangoft2-1.0-0 libgdk-pixbuf2.0-0 — нативные зависимости weasyprint
-# (нужны для рендера PDF в /artworks/{id}/pdf).
+# libpango-1.0-0 libpangoft2-1.0-0 — нативные зависимости weasyprint (PDF в /artworks/{id}/pdf).
+# WeasyPrint >=53 не требует cairo и gdk-pixbuf — нужен только Pango.
+# fonts-dejavu-core — шрифт для PDF.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libpq-dev \
-        libcairo2 \
         libpango-1.0-0 \
         libpangoft2-1.0-0 \
-        libgdk-pixbuf2.0-0 \
         fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
