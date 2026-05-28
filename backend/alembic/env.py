@@ -1,9 +1,11 @@
+import os
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
 from app.database import Base
+from app.config import settings
 from app.models import *  # noqa: F401, F403 — register all models
 
 config = context.config
@@ -13,11 +15,17 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
+# Боевой URL берём из окружения (compose задаёт
+# DATABASE_URL=postgresql+asyncpg://...), но alembic работает синхронно —
+# конвертируем asyncpg → psycopg2. alembic.ini-шный sqlalchemy.url игнорируем.
+_raw_url = os.environ.get("DATABASE_URL") or settings.database_url
+_sync_url = _raw_url.replace("+asyncpg", "+psycopg2")
+config.set_main_option("sqlalchemy.url", _sync_url)
+
 
 def run_migrations_offline() -> None:
-    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=url,
+        url=_sync_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
