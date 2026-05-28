@@ -11,6 +11,10 @@
 #   - deploy/.last_alembic_rev    — текущая ревизия БД
 #   - MinIO local/backups/pre-deploy/  — pg_dump перед деплоем
 # Откат: ./deploy/rollback.sh
+#
+# ВАЖНО по порядку: backend пересобираем ДО alembic — иначе в работающем
+# (ещё старом) контейнере нет файлов новых миграций. Если alembic_version
+# пуста (первый прогон после ввода alembic) — делаем stamp 0001_baseline.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -18,7 +22,7 @@ cd "$(dirname "$0")/.."
 COMPOSE="docker compose -f deploy/docker-compose.vps.yml"
 TS="$(date +%Y-%m-%d_%H-%M-%S)"
 
-echo "==> [1/5] snapshot current state"
+echo "==> [1/6] snapshot current state"
 git rev-parse HEAD > deploy/.last_deploy_sha
 SHORT_SHA="$(cut -c1-8 deploy/.last_deploy_sha)"
 echo "    git SHA: $(cat deploy/.last_deploy_sha)"
@@ -27,14 +31,14 @@ echo "    git SHA: $(cat deploy/.last_deploy_sha)"
 CURRENT_REV="$($COMPOSE exec -T postgres psql -U artoteka -d artoteka -tAc \
   "SELECT version_num FROM alembic_version LIMIT 1;" 2>/dev/null | tr -d '[:space:]' || true)"
 if [ -z "$CURRENT_REV" ]; then
-  echo "    alembic: <empty> (БД ещё не stamp-нута — откат миграций будет невозможен)"
+  echo "    alembic: <empty> (БД ещё не stamp-нута — сделаем stamp 0001_baseline)"
   : > deploy/.last_alembic_rev
 else
   echo "$CURRENT_REV" > deploy/.last_alembic_rev
   echo "    alembic ревизия: $CURRENT_REV"
 fi
 
-echo "==> [2/5] pre-deploy dump БД -> MinIO pre-deploy/"
+echo "==> [2/6] pre-deploy dump БД -> MinIO pre-deploy/"
 TMP="/tmp/artoteka-pre-deploy-${TS}-${SHORT_SHA}.dump.gz"
 cleanup() { rm -f "$TMP"; }
 trap cleanup EXIT
@@ -51,17 +55,31 @@ docker exec deploy-minio-1 rm -f /tmp/pre-deploy.gz
 docker exec deploy-minio-1 mc rm --recursive --force --older-than "7d" \
   "local/backups/pre-deploy/" >/dev/null 2>&1 || true
 
-echo "==> [3/5] git pull"
+echo "==> [3/6] git pull"
 git pull --ff-only
 
-echo "==> [4/5] alembic upgrade head"
+echo "==> [4/6] rebuild backend (чтобы образ содержал свежие миграции)"
+$COMPOSE up -d --build backend
+# Ждём, пока backend-контейнер начнёт принимать exec
+for i in $(seq 1 30); do
+  if $COMPOSE exec -T backend true 2>/dev/null; then
+    break
+  fi
+  sleep 1
+done
+
+echo "==> [5/6] alembic migrations"
+if [ -z "$CURRENT_REV" ]; then
+  echo "    stamp 0001_baseline (первый прогон)"
+  $COMPOSE exec -T backend alembic stamp 0001_baseline
+fi
 $COMPOSE exec -T backend alembic upgrade head
 
 if [ $# -eq 0 ]; then
-  echo "==> [5/5] rebuild all"
+  echo "==> [6/6] rebuild all"
   $COMPOSE up -d --build
 else
-  echo "==> [5/5] rebuild: $*"
+  echo "==> [6/6] rebuild: $*"
   $COMPOSE up -d --build "$@"
 fi
 

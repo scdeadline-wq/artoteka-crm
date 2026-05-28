@@ -80,11 +80,32 @@
 ssh root@185.152.94.51 "cd /opt/artoteka-crm && ./deploy/update.sh backend"
 ```
 
-`update.sh` перед каждым обновлением:
+`update.sh` по шагам:
 1. Записывает текущий git SHA в `deploy/.last_deploy_sha`.
 2. Записывает текущую alembic-ревизию в `deploy/.last_alembic_rev`.
 3. Делает `pg_dump` в `MinIO local/backups/pre-deploy/` (retention 7 дней).
-4. Только затем — `git pull`, `alembic upgrade head`, `docker compose up -d --build`.
+4. `git pull`.
+5. **Пересобирает backend** (`up -d --build backend`) — чтобы в образе оказались свежие
+   файлы миграций ДО их применения (исходник не монтируется volume'ом, он в образе).
+6. Миграции: если `alembic_version` пуста (первый прогон) — `alembic stamp 0001_baseline`,
+   затем `alembic upgrade head`.
+7. `docker compose up -d --build` (всё или указанные сервисы).
+
+## Авто-деплой (push → сервер сам подтягивает)
+
+`deploy/autopull.sh` ставится в cron на сервере и раз в пару минут проверяет `origin/main`.
+Если ушёл вперёд — сам гонит `./deploy/update.sh`. Входящий SSH не нужен: сервер опрашивает
+GitHub по исходящему HTTPS (актуально, т.к. анти-DDoS Timeweb режет SSH с дата-центровых подсетей).
+
+Установка (один раз, через serial-консоль или SSH):
+```bash
+cd /opt/artoteka-crm
+git pull --ff-only            # подтянуть autopull.sh + фикс update.sh
+chmod +x deploy/autopull.sh deploy/update.sh
+# cron каждые 2 минуты:
+( crontab -l 2>/dev/null; echo "*/2 * * * * /opt/artoteka-crm/deploy/autopull.sh" ) | crontab -
+```
+Лог авто-деплоя: `/var/log/artoteka-autopull.log`. flock не даёт прогонам наложиться.
 
 ## Откат деплоя
 
@@ -99,11 +120,10 @@ ssh root@185.152.94.51 "cd /opt/artoteka-crm && ./deploy/rollback.sh"
 
 Если миграция-downgrade не отработала и БД покорёжило — восстановить из pre-deploy-дампа (инструкция выводится в конце `rollback.sh`).
 
-**Первый запуск на VPS** (когда alembic-таблицы ещё нет в БД):
-```bash
-docker compose -f deploy/docker-compose.vps.yml exec backend alembic stamp 0001_baseline
-```
-Это пометит текущую БД как baseline. После этого `update.sh` будет применять только новые миграции.
+**Первый запуск на VPS** — отдельных действий больше не нужно: `update.sh` сам видит
+пустую `alembic_version` и делает `alembic stamp 0001_baseline` перед `upgrade head`.
+То есть на чистой (созданной через `create_all`) БД первый `./deploy/update.sh`
+проштампует baseline и накатит 0002 + 0003.
 
 ## Сетевая особенность: IPv6 отключён
 
