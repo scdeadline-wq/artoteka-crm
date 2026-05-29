@@ -43,7 +43,7 @@ function ArtworksContent() {
   const [priceFrom, setPriceFrom] = useState("");
   const [priceTo, setPriceTo] = useState("");
   const [framedFilter, setFramedFilter] = useState<"" | "true" | "false">("");
-  const [sort, setSort] = useState<"" | "last_name" | "inventory">("");
+  const [sort, setSort] = useState<"" | "last_name" | "inventory" | "price_asc" | "price_desc">("");
   // 0 = «Все»; иначе id комнаты.
   const [roomId, setRoomId] = useState<number>(0);
   const user = useAuthStore((s) => s.user);
@@ -253,12 +253,14 @@ function ArtworksContent() {
         </select>
         <select
           value={sort}
-          onChange={(e) => setSort(e.target.value as "" | "last_name" | "inventory")}
+          onChange={(e) => setSort(e.target.value as "" | "last_name" | "inventory" | "price_asc" | "price_desc")}
           className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
         >
           <option value="">Новые сверху</option>
           <option value="last_name">По фамилии</option>
           <option value="inventory">По № инв.</option>
+          <option value="price_asc">Цена ↑</option>
+          <option value="price_desc">Цена ↓</option>
         </select>
         {filtersActive && (
           <button
@@ -296,11 +298,11 @@ function ArtworksContent() {
                 )}
               </div>
               <div className="p-4">
-                <p className="text-sm font-medium text-gray-900 group-hover:text-blue-600">
-                  {aw.title || "Без названия"}
-                </p>
-                <p className="mt-0.5 text-xs text-gray-500">
+                <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-600">
                   {aw.artist.name_ru}
+                </p>
+                <p className="mt-0.5 text-xs text-gray-600">
+                  {aw.title || "Без названия"}
                   {aw.year ? `, ${aw.year}` : ""}
                 </p>
                 <div className="mt-2 flex items-center justify-between">
