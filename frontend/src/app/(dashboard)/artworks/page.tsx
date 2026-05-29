@@ -144,20 +144,21 @@ export default function ArtworksPage() {
         </div>
       )}
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative min-w-[220px] flex-1">
+      {/* Все фильтры — равной ширины (одна сетка, ячейки одинакового размера). */}
+      <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+        <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
           <input
-            placeholder="Поиск по названию..."
+            placeholder="Поиск..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full rounded-lg border py-2 pl-9 pr-4 text-sm focus:border-blue-500 focus:outline-none"
+            className="h-10 w-full rounded-lg border pl-9 pr-3 text-sm focus:border-blue-500 focus:outline-none"
           />
         </div>
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
         >
           <option value="">Все статусы</option>
           {Object.entries(STATUS_LABELS).map(([val, label]) => (
@@ -169,7 +170,7 @@ export default function ArtworksPage() {
         <select
           value={artistFilter}
           onChange={(e) => setArtistFilter(e.target.value)}
-          className="max-w-[200px] rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
         >
           <option value="">Все художники</option>
           {artists.map((a) => (
@@ -181,7 +182,7 @@ export default function ArtworksPage() {
         <select
           value={techniqueFilter}
           onChange={(e) => setTechniqueFilter(e.target.value)}
-          className="max-w-[200px] rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
         >
           <option value="">Все техники</option>
           {techniques.map((t) => (
@@ -190,44 +191,48 @@ export default function ArtworksPage() {
             </option>
           ))}
         </select>
-        <input
-          type="number"
-          placeholder="Год от"
-          value={yearFrom}
-          onChange={(e) => setYearFrom(e.target.value)}
-          className="w-24 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-        />
-        <input
-          type="number"
-          placeholder="до"
-          value={yearTo}
-          onChange={(e) => setYearTo(e.target.value)}
-          className="w-20 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-        />
+        <div className="flex gap-1">
+          <input
+            type="number"
+            placeholder="Год от"
+            value={yearFrom}
+            onChange={(e) => setYearFrom(e.target.value)}
+            className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
+          />
+          <input
+            type="number"
+            placeholder="до"
+            value={yearTo}
+            onChange={(e) => setYearTo(e.target.value)}
+            className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
         <input
           placeholder="Тег"
           value={tagFilter}
           onChange={(e) => setTagFilter(e.target.value.replace(/^#/, ""))}
-          className="w-28 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
         />
-        <input
-          type="number"
-          placeholder="Цена от"
-          value={priceFrom}
-          onChange={(e) => setPriceFrom(e.target.value)}
-          className="w-24 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-        />
-        <input
-          type="number"
-          placeholder="до"
-          value={priceTo}
-          onChange={(e) => setPriceTo(e.target.value)}
-          className="w-20 rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
-        />
+        <div className="flex gap-1">
+          <input
+            type="number"
+            placeholder="Цена от"
+            value={priceFrom}
+            onChange={(e) => setPriceFrom(e.target.value)}
+            className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
+          />
+          <input
+            type="number"
+            placeholder="до"
+            value={priceTo}
+            onChange={(e) => setPriceTo(e.target.value)}
+            className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
         <select
           value={framedFilter}
           onChange={(e) => setFramedFilter(e.target.value as "" | "true" | "false")}
-          className="rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
         >
           <option value="">Рама: любая</option>
           <option value="true">В раме</option>
@@ -236,7 +241,7 @@ export default function ArtworksPage() {
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as "" | "last_name" | "inventory")}
-          className="rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
         >
           <option value="">Новые сверху</option>
           <option value="last_name">По фамилии</option>
@@ -245,7 +250,7 @@ export default function ArtworksPage() {
         {filtersActive && (
           <button
             onClick={resetFilters}
-            className="rounded-lg border px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+            className="h-10 w-full rounded-lg border px-3 text-sm text-gray-600 hover:bg-gray-50"
           >
             Сбросить
           </button>

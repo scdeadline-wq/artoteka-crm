@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
+from app.sorting import surname_expr
 from app.auth import get_current_user
 from app.models import Artist, User
 from app.schemas.artist import ArtistCreate, ArtistUpdate, ArtistOut
@@ -23,7 +24,8 @@ async def list_artists(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    stmt = select(Artist).order_by(Artist.name_ru)
+    # По фамилии = последнее слово name_ru (данные в формате «Имя Фамилия»).
+    stmt = select(Artist).order_by(surname_expr(Artist.name_ru), Artist.name_ru)
     if q:
         stmt = stmt.where(Artist.name_ru.ilike(f"%{q}%") | Artist.name_en.ilike(f"%{q}%"))
     if is_group is not None:
