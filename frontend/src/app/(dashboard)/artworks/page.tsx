@@ -18,6 +18,7 @@ const STATUS_COLORS: Record<string, string> = {
   reserved: "bg-blue-100 text-blue-800",
   sold: "bg-purple-100 text-purple-800",
   collection: "bg-orange-100 text-orange-800",
+  on_exhibition: "bg-teal-100 text-teal-800",
 };
 
 export default function ArtworksPage() {

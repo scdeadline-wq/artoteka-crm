@@ -19,6 +19,7 @@ class ArtworkStatus(str, enum.Enum):
     reserved = "reserved"
     sold = "sold"
     collection = "collection"
+    on_exhibition = "on_exhibition"
 
 
 # Many-to-many: artwork <-> technique
