@@ -269,34 +269,39 @@ export default function ArtworkDetailPage({
         <div className="mb-4 flex items-start justify-between">
           <div>
             {editing ? (
-              <input
-                value={form.title as string}
-                onChange={(e) => setForm({ ...form, title: e.target.value })}
-                className="text-2xl font-bold text-gray-900 border-b border-blue-300 focus:outline-none"
-                placeholder="Название"
-              />
+              <>
+                <select
+                  value={form.artist_id as number}
+                  onChange={(e) => setForm({ ...form, artist_id: Number(e.target.value) })}
+                  className="rounded border px-2 py-1 text-lg font-semibold"
+                >
+                  {artists.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name_ru}</option>
+                  ))}
+                </select>
+                <input
+                  value={form.title as string}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  className="mt-1 block text-lg text-gray-700 border-b border-blue-300 focus:outline-none"
+                  placeholder="Название"
+                />
+              </>
             ) : (
-              <h1 className="text-2xl font-bold text-gray-900">
-                {artwork.title || "Без названия"}
-              </h1>
-            )}
-            {editing ? (
-              <select
-                value={form.artist_id as number}
-                onChange={(e) => setForm({ ...form, artist_id: Number(e.target.value) })}
-                className="mt-1 rounded border px-2 py-1 text-sm"
-              >
-                {artists.map((a) => (
-                  <option key={a.id} value={a.id}>{a.name_ru}</option>
-                ))}
-              </select>
-            ) : (
-              <p className="mt-1 text-gray-600">
-                <Link href={`/artists`} className="hover:text-blue-600 hover:underline">
-                  {artwork.artist.name_ru}
-                </Link>
-                {artwork.year ? `, ${artwork.year}` : ""}
-              </p>
+              <>
+                {/* Художник — жирным сверху (ссылка на его работы), название — обычным под ним */}
+                <h1 className="text-2xl font-bold text-gray-900">
+                  <Link
+                    href={`/artworks?artist=${artwork.artist.id}`}
+                    className="hover:text-blue-600 hover:underline"
+                  >
+                    {artwork.artist.name_ru}
+                  </Link>
+                </h1>
+                <p className="mt-1 text-lg text-gray-700">
+                  {artwork.title || "Без названия"}
+                  {artwork.year ? `, ${artwork.year}` : ""}
+                </p>
+              </>
             )}
           </div>
           <div className="flex flex-col items-end gap-2">

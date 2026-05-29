@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
-from sqlalchemy import select, func
+from sqlalchemy import select, func, nullslast
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -103,6 +103,10 @@ async def list_artworks(
         )
     elif sort == "inventory":
         stmt = stmt.order_by(Artwork.inventory_number)
+    elif sort == "price_asc":
+        stmt = stmt.order_by(nullslast(Artwork.sale_price.asc()))
+    elif sort == "price_desc":
+        stmt = stmt.order_by(nullslast(Artwork.sale_price.desc()))
     else:
         stmt = stmt.order_by(Artwork.created_at.desc())
 
