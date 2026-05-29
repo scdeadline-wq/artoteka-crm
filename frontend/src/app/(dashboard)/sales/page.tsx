@@ -44,7 +44,7 @@ export default function SalesPage() {
       )}
 
       <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
-        <table className="w-full text-sm">
+        <table className="w-full min-w-[640px] text-sm">
           <thead>
             <tr className="border-b text-left text-xs text-gray-500">
               <th className="px-4 py-3">Дата</th>

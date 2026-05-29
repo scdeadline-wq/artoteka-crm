@@ -180,14 +180,14 @@ export default function ArtworkDetailPage({
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
         <Link
           href="/artworks"
           className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-gray-900"
         >
           <ArrowLeft size={16} /> Назад
         </Link>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {!editing && (
             <button
               onClick={async () => {

@@ -133,8 +133,8 @@ export default function RoomsPage() {
       ) : rooms.length === 0 ? (
         <p className="text-gray-500">Комнат пока нет. Создай первую сверху.</p>
       ) : (
-        <div className="overflow-hidden rounded-xl bg-white shadow-sm">
-          <table className="w-full text-sm">
+        <div className="overflow-x-auto rounded-xl bg-white shadow-sm">
+          <table className="w-full min-w-[480px] text-sm">
             <thead>
               <tr className="border-b text-left text-xs text-gray-500">
                 <th className="px-4 py-3">Название</th>
