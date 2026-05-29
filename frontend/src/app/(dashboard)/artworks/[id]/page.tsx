@@ -189,11 +189,20 @@ export default function ArtworkDetailPage({
           {!editing && (
             <button
               onClick={async () => {
-                const res = await api.get(`/artworks/${id}/pdf/`, { responseType: "blob" });
-                const blob = res.data as Blob;
-                const url = URL.createObjectURL(blob);
-                window.open(url, "_blank", "noopener");
-                setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                try {
+                  const res = await api.get(`/artworks/${id}/pdf/`, { responseType: "blob" });
+                  const url = URL.createObjectURL(res.data as Blob);
+                  // Скачиваем через <a download>: window.open после await режет popup-блокер.
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = `artoteka_${artwork.inventory_number}.pdf`;
+                  document.body.appendChild(a);
+                  a.click();
+                  a.remove();
+                  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                } catch {
+                  alert("Не удалось сформировать PDF");
+                }
               }}
               className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >

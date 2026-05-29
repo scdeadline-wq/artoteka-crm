@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
+from app.sorting import surname_expr
 from app.auth import get_current_user, is_admin, require_admin
 from app.models import Artwork, ArtworkStatus, Artist, Technique, Image, User
 from app.schemas.artwork import ArtworkCreate, ArtworkUpdate, ArtworkOut, ArtworkListOut
@@ -94,10 +95,10 @@ async def list_artworks(
                 Artwork.artist.has(Artist.name_en.ilike(f"%{q}%")),
             ))
 
-    # Сортировка. По фамилии = первое слово из artists.name_ru (фолбэк — вся строка).
+    # Сортировка. По фамилии = последнее слово из artists.name_ru (формат «Имя Фамилия»).
     if sort == "last_name":
         stmt = stmt.join(Artwork.artist).order_by(
-            func.split_part(Artist.name_ru, " ", 1),
+            surname_expr(Artist.name_ru),
             Artwork.inventory_number,
         )
     elif sort == "inventory":

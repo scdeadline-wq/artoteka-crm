@@ -12,35 +12,41 @@ NAME, PHONE, EMAIL, DESCRIPTION = range(4)
 @require_whitelist
 async def client_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["client_data"] = {}
-    await update.message.reply_text("Добавляем нового клиента.\nИмя?")
+    await update.message.reply_text(
+        "Добавляем нового клиента.\nИмя? (или /cancel — отменить)"
+    )
     return NAME
 
 
 async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["client_data"]["name"] = update.message.text.strip()
-    await update.message.reply_text("Телефон? (или /skip)")
+    await update.message.reply_text("Телефон? (/skip — пропустить, /cancel — отменить)")
     return PHONE
 
 
 async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["client_data"]["phone"] = update.message.text.strip()
-    await update.message.reply_text("Email? (или /skip)")
+    await update.message.reply_text("Email? (/skip — пропустить, /cancel — отменить)")
     return EMAIL
 
 
 async def skip_phone(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Email? (или /skip)")
+    await update.message.reply_text("Email? (/skip — пропустить, /cancel — отменить)")
     return EMAIL
 
 
 async def get_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["client_data"]["email"] = update.message.text.strip()
-    await update.message.reply_text("Заметки / интересы / город / бюджет — одной строкой? (или /skip)")
+    await update.message.reply_text(
+        "Заметки / интересы / город / бюджет — одной строкой? (/skip — пропустить, /cancel — отменить)"
+    )
     return DESCRIPTION
 
 
 async def skip_email(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Заметки / интересы / город / бюджет — одной строкой? (или /skip)")
+    await update.message.reply_text(
+        "Заметки / интересы / город / бюджет — одной строкой? (/skip — пропустить, /cancel — отменить)"
+    )
     return DESCRIPTION
 
 

@@ -29,13 +29,22 @@ export default function ArtistsPage() {
         .then((r) => r.data),
   });
 
-  // Группировка по первой букве фамилии (первое слово name_ru).
-  // Если первое слово начинается не с буквы — отдельная группа «#».
+  // Фамилия = ПОСЛЕДНЕЕ слово name_ru (данные в формате «Имя Фамилия»),
+  // скобочные пояснения отбрасываем: «Алексей Смирнов (фон Раух)» → «Смирнов».
+  const surnameOf = (a: Artist) => {
+    const cleaned = a.name_ru.replace(/\s*\([^)]*\)/g, "").trim();
+    const parts = cleaned.split(/\s+/);
+    return parts[parts.length - 1] || cleaned;
+  };
+
+  // Сортируем по фамилии, затем группируем по её первой букве.
   const grouped = (() => {
+    const sorted = [...artists].sort((a, b) =>
+      surnameOf(a).localeCompare(surnameOf(b), "ru")
+    );
     const groups = new Map<string, Artist[]>();
-    for (const a of artists) {
-      const lastName = a.name_ru.trim().split(/\s+/)[0] || "";
-      const first = lastName.charAt(0).toUpperCase();
+    for (const a of sorted) {
+      const first = surnameOf(a).charAt(0).toUpperCase();
       const letter = /[A-ZА-ЯЁ]/u.test(first) ? first : "#";
       const arr = groups.get(letter);
       if (arr) arr.push(a);
