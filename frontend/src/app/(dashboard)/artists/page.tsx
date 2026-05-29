@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Plus, Search } from "lucide-react";
+import Link from "next/link";
 import api from "@/lib/api";
 import type { Artist } from "@/lib/types";
 
@@ -159,19 +160,24 @@ export default function ArtistsPage() {
               </header>
               <ul>
                 {items.map((a) => (
-                  <li
-                    key={a.id}
-                    className="flex items-center gap-4 border-b px-4 py-2.5 text-sm last:border-0 hover:bg-gray-50"
-                  >
-                    <span className="font-medium text-gray-900">{a.name_ru}</span>
-                    {a.name_en && (
-                      <span className="text-gray-500">{a.name_en}</span>
-                    )}
-                    {a.is_group && (
-                      <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
-                        группа
+                  <li key={a.id} className="border-b last:border-0">
+                    <Link
+                      href={`/artworks?artist=${a.id}`}
+                      className="flex items-center gap-4 px-4 py-2.5 text-sm hover:bg-gray-50"
+                      title="Показать работы этого художника"
+                    >
+                      <span className="font-medium text-gray-900 hover:text-blue-600">
+                        {a.name_ru}
                       </span>
-                    )}
+                      {a.name_en && (
+                        <span className="text-gray-500">{a.name_en}</span>
+                      )}
+                      {a.is_group && (
+                        <span className="ml-auto rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                          группа
+                        </span>
+                      )}
+                    </Link>
                   </li>
                 ))}
               </ul>

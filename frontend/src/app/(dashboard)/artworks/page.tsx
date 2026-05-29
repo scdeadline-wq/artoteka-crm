@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Plus, Search, Trash2 } from "lucide-react";
 import api from "@/lib/api";
@@ -20,9 +21,20 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 export default function ArtworksPage() {
+  // useSearchParams требует Suspense-границу, иначе падает прод-сборка.
+  return (
+    <Suspense fallback={null}>
+      <ArtworksContent />
+    </Suspense>
+  );
+}
+
+function ArtworksContent() {
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
-  const [artistFilter, setArtistFilter] = useState("");
+  // Предзаполняем фильтр художника из URL (?artist=<id>) — переход со страницы «Художники».
+  const [artistFilter, setArtistFilter] = useState(searchParams.get("artist") ?? "");
   const [techniqueFilter, setTechniqueFilter] = useState("");
   const [yearFrom, setYearFrom] = useState("");
   const [yearTo, setYearTo] = useState("");
