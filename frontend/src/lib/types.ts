@@ -112,6 +112,7 @@ export const STATUS_LABELS: Record<string, string> = {
   reserved: "Резерв",
   sold: "Продано",
   collection: "Коллекция",
+  on_exhibition: "На выставке",
 };
 
 export const CLIENT_TYPE_LABELS: Record<string, string> = {

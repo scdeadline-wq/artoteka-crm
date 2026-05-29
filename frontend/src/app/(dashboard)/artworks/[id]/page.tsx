@@ -21,15 +21,17 @@ const STATUS_COLORS: Record<string, string> = {
   reserved: "bg-blue-100 text-blue-800",
   sold: "bg-purple-100 text-purple-800",
   collection: "bg-orange-100 text-orange-800",
+  on_exhibition: "bg-teal-100 text-teal-800",
 };
 
 const STATUS_FLOW: Record<string, string[]> = {
   draft: ["review", "for_sale"],
   review: ["for_sale", "draft"],
-  for_sale: ["reserved", "collection"],
+  for_sale: ["reserved", "collection", "on_exhibition"],
   reserved: ["for_sale", "sold"],
   sold: [],
-  collection: ["for_sale"],
+  collection: ["for_sale", "on_exhibition"],
+  on_exhibition: ["for_sale", "collection"],
 };
 
 export default function ArtworkDetailPage({

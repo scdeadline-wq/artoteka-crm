@@ -14,6 +14,7 @@ STATUS_LABEL = {
     "reserved": "Зарезервирована",
     "sold": "Продана",
     "collection": "В коллекции",
+    "on_exhibition": "На выставке",
 }
 
 
