@@ -13,6 +13,7 @@ interface AuthState {
   token: string | null;
   user: AuthUser | null;
   setAuth: (token: string, user: AuthState["user"]) => void;
+  setUser: (user: AuthUser) => void;
   logout: () => void;
 }
 
@@ -23,6 +24,8 @@ export const useAuthStore = create<AuthState>((set) => ({
     localStorage.setItem("token", token);
     set({ token, user });
   },
+  // Восстановление пользователя по живому токену (роль не персистится — тянем /auth/me).
+  setUser: (user) => set({ user }),
   logout: () => {
     localStorage.removeItem("token");
     set({ token: null, user: null });
