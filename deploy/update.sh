@@ -79,13 +79,19 @@ if [ -z "$CURRENT_REV" ]; then
 fi
 $COMPOSE exec -T backend alembic upgrade head
 
+# Сборка ПОСЛЕДОВАТЕЛЬНО, по одному сервису: параллельная сборка всех разом
+# давала пик памяти и OOM-kill именно на тяжёлом `next build` (frontend не обновлялся).
 if [ $# -eq 0 ]; then
-  echo "==> [6/6] rebuild all"
-  $COMPOSE up -d --build
+  SERVICES="backend bot frontend"
 else
-  echo "==> [6/6] rebuild: $*"
-  $COMPOSE up -d --build "$@"
+  SERVICES="$*"
 fi
+echo "==> [6/6] rebuild (последовательно): $SERVICES"
+for svc in $SERVICES; do
+  echo "    --- build $svc ---"
+  $COMPOSE build "$svc"
+done
+$COMPOSE up -d
 
 echo "==> ps"
 $COMPOSE ps --format 'table {{.Service}}\t{{.Status}}'
