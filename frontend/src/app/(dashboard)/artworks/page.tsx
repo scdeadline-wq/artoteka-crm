@@ -277,7 +277,7 @@ function ArtworksContent() {
       ) : artworks.length === 0 ? (
         <p className="text-gray-500">Нет произведений</p>
       ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {artworks.map((aw) => (
             <Link
               key={aw.id}
@@ -297,15 +297,15 @@ function ArtworksContent() {
                   </div>
                 )}
               </div>
-              <div className="p-4">
-                <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-600">
+              <div className="p-3 sm:p-4">
+                <p className="text-sm font-semibold text-gray-900 group-hover:text-blue-600 break-words">
                   {aw.artist.name_ru}
                 </p>
-                <p className="mt-0.5 text-xs text-gray-600">
+                <p className="mt-0.5 text-xs text-gray-600 break-words">
                   {aw.title || "Без названия"}
                   {aw.year ? `, ${aw.year}` : ""}
                 </p>
-                <div className="mt-2 flex items-center justify-between">
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-1">
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[aw.status] || ""}`}
                   >
