@@ -46,18 +46,32 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
     status = (a.get("status") or "draft").lower()
     room = a.get("room") or {}
     room_name = room.get("name") if isinstance(room, dict) else None
+    style = a.get("style_period")
+    rack = a.get("rack")
+    shelf = a.get("shelf")
     tags = a.get("tags") or []
 
     lines = [
         f"<b>{escape(artist_name)}</b> — {escape(str(title))}",
         f"Год: {year}",
         f"Техника: {escape(techs)}",
+    ]
+    if style:
+        lines.append(f"Стиль: {escape(str(style))}")
+    lines += [
         f"Размер: {size}",
         f"Цена: {sale_price}",
     ]
     if is_admin and a.get("purchase_price") not in (None, ""):
         lines.append(f"Закупка: {_fmt_price(a.get('purchase_price'))}")
-    lines.append(f"№ {inv}" + (f" · Комната: {escape(str(room_name))}" if room_name else ""))
+    storage_bits = []
+    if room_name:
+        storage_bits.append(f"Комната: {escape(str(room_name))}")
+    if rack:
+        storage_bits.append(f"Стеллаж: {escape(str(rack))}")
+    if shelf:
+        storage_bits.append(f"Полка: {escape(str(shelf))}")
+    lines.append(f"№ {inv}" + (" · " + " · ".join(storage_bits) if storage_bits else ""))
     if tags:
         lines.append("Теги: " + " ".join(f"#{escape(str(t))}" for t in tags))
     lines.append(f"Статус: {STATUS_LABEL.get(status, status)}")

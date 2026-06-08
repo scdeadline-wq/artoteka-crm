@@ -146,6 +146,12 @@ class CRMClient:
         response.raise_for_status()
         return response.json()
 
+    async def create_technique(self, name: str) -> dict[str, Any]:
+        """Добавить свою технику в справочник (бэкенд дедуплицирует по имени)."""
+        response = await self._request("POST", "/techniques/", json={"name": name})
+        response.raise_for_status()
+        return response.json()
+
     async def create_sale(self, payload: dict[str, Any]) -> dict[str, Any]:
         response = await self._request("POST", "/sales/", json=payload)
         response.raise_for_status()

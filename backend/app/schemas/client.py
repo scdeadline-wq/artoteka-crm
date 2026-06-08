@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel
 
@@ -37,3 +38,17 @@ class ClientOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class ClientPurchase(BaseModel):
+    """Покупка клиента для карточки (без закупочных цен/маржи)."""
+    id: int
+    artwork_id: int
+    artwork_title: str | None
+    artist_name: str | None
+    sold_price: Decimal
+    sold_at: datetime
+
+
+class ClientDetailOut(ClientOut):
+    purchases: list[ClientPurchase] = []

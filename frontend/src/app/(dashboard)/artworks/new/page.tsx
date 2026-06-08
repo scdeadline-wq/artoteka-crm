@@ -2,8 +2,8 @@
 
 import { useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { Upload, Sparkles, Loader2, X, Check, Wand2, ExternalLink } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Upload, Sparkles, Loader2, X, Check, Wand2, ExternalLink, Plus } from "lucide-react";
 import api from "@/lib/api";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { Artist, Technique, Room } from "@/lib/types";
@@ -35,9 +35,12 @@ interface SearchSource {
 
 export default function NewArtworkPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminRole(user);
   const [step, setStep] = useState<Step>("upload");
+  const [newTech, setNewTech] = useState("");
+  const [manualArtist, setManualArtist] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<AISuggestion | null>(null);
@@ -65,7 +68,10 @@ export default function NewArtworkPage() {
     edition: "",
     description: "",
     condition: "",
+    style_period: "",
     location: "",
+    rack: "",
+    shelf: "",
     width_cm: "",
     height_cm: "",
     purchase_price: "",
@@ -103,6 +109,7 @@ export default function NewArtworkPage() {
         year: suggestion.year ? String(suggestion.year) : "",
         description: suggestion.description || "",
         condition: suggestion.condition || "",
+        style_period: suggestion.style_period || "",
         technique_ids: suggestion.techniques.map((t) => t.id),
         width_cm: suggestion.width_cm ? String(suggestion.width_cm) : "",
         height_cm: suggestion.height_cm ? String(suggestion.height_cm) : "",
@@ -132,6 +139,24 @@ export default function NewArtworkPage() {
     },
   });
 
+  // Добавить свою технику в справочник и сразу отметить её
+  const addTechnique = useMutation({
+    mutationFn: async (name: string) => {
+      const { data } = await api.post("/techniques", { name });
+      return data as Technique;
+    },
+    onSuccess: (tech) => {
+      queryClient.invalidateQueries({ queryKey: ["techniques"] });
+      setForm((f) => ({
+        ...f,
+        technique_ids: f.technique_ids.includes(tech.id)
+          ? f.technique_ids
+          : [...f.technique_ids, tech.id],
+      }));
+      setNewTech("");
+    },
+  });
+
   // Создание работы
   const create = useMutation({
     mutationFn: async () => {
@@ -151,7 +176,10 @@ export default function NewArtworkPage() {
         edition: form.edition || null,
         description: form.description || null,
         condition: form.condition || null,
+        style_period: form.style_period || null,
         location: form.location || null,
+        rack: form.rack || null,
+        shelf: form.shelf || null,
         width_cm: form.width_cm ? Number(form.width_cm) : null,
         height_cm: form.height_cm ? Number(form.height_cm) : null,
         sale_price: form.sale_price ? Number(form.sale_price) : null,
@@ -436,21 +464,23 @@ export default function NewArtworkPage() {
                     </span>
                   )}
               </label>
-              {form.new_artist_name && !form.artist_id ? (
+              {manualArtist || (form.new_artist_name && !form.artist_id) ? (
                 <div className="flex gap-2">
                   <input
                     value={form.new_artist_name}
                     onChange={(e) =>
-                      setForm({ ...form, new_artist_name: e.target.value })
+                      setForm({ ...form, new_artist_name: e.target.value, artist_id: 0 })
                     }
                     className="flex-1 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm"
                     placeholder="Имя нового художника"
+                    autoFocus
                   />
                   <button
                     type="button"
-                    onClick={() =>
-                      setForm({ ...form, new_artist_name: "", artist_id: 0 })
-                    }
+                    onClick={() => {
+                      setManualArtist(false);
+                      setForm({ ...form, new_artist_name: "" });
+                    }}
                     className="rounded-lg border px-3 py-2 text-xs text-gray-500"
                   >
                     Из базы
@@ -459,13 +489,18 @@ export default function NewArtworkPage() {
               ) : (
                 <select
                   value={form.artist_id}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    if (e.target.value === "new") {
+                      setManualArtist(true);
+                      setForm({ ...form, artist_id: 0 });
+                      return;
+                    }
                     setForm({
                       ...form,
                       artist_id: Number(e.target.value),
                       new_artist_name: "",
-                    })
-                  }
+                    });
+                  }}
                   className="w-full rounded-lg border px-3 py-2 text-sm"
                   required={!form.new_artist_name}
                 >
@@ -476,6 +511,7 @@ export default function NewArtworkPage() {
                       {a.name_en ? ` (${a.name_en})` : ""}
                     </option>
                   ))}
+                  <option value="new">+ Добавить нового художника…</option>
                 </select>
               )}
             </div>
@@ -557,6 +593,9 @@ export default function NewArtworkPage() {
           <div className="mb-4">
             <label className="mb-2 block text-xs text-gray-500">Техника</label>
             <div className="max-h-40 space-y-2 overflow-y-auto rounded-lg border p-3">
+              {Object.entries(grouped).length === 0 && (
+                <p className="text-xs text-gray-400">Справочник пуст — добавьте свою технику ниже</p>
+              )}
               {Object.entries(grouped).map(([cat, techs]) => (
                 <div key={cat}>
                   <p className="mb-1 text-[10px] font-semibold uppercase text-gray-400">
@@ -584,17 +623,45 @@ export default function NewArtworkPage() {
                 </div>
               ))}
             </div>
+            {/* Своя техника */}
+            <div className="mt-2 flex gap-2">
+              <input
+                value={newTech}
+                onChange={(e) => setNewTech(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (newTech.trim()) addTechnique.mutate(newTech.trim());
+                  }
+                }}
+                placeholder="Своя техника (напр. «Левкас, темпера»)"
+                className="flex-1 rounded-lg border px-3 py-2 text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => newTech.trim() && addTechnique.mutate(newTech.trim())}
+                disabled={!newTech.trim() || addTechnique.isPending}
+                className="flex items-center gap-1 rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                {addTechnique.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                Добавить
+              </button>
+            </div>
           </div>
 
-          {/* Стиль */}
-          {aiSuggestion?.style_period && (
-            <div className="mb-4">
-              <label className="mb-1 block text-xs text-gray-500">Стиль / направление</label>
-              <div className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-900">
-                {aiSuggestion.style_period}
-              </div>
-            </div>
-          )}
+          {/* Стиль / направление — редактируемый */}
+          <div className="mb-4">
+            <label className="mb-1 block text-xs text-gray-500">
+              Стиль / направление
+              {aiSuggestion?.style_period && <span className="ml-1 text-amber-600">AI</span>}
+            </label>
+            <input
+              value={form.style_period}
+              onChange={(e) => setForm({ ...form, style_period: e.target.value })}
+              className="w-full rounded-lg border px-3 py-2 text-sm"
+              placeholder="напр. Импрессионизм, 1960-е"
+            />
+          </div>
 
           {/* Описание */}
           <div className="mb-4">
@@ -674,6 +741,24 @@ export default function NewArtworkPage() {
                 }
                 className="w-full rounded-lg border px-3 py-2 text-sm"
                 placeholder="Склад, адрес"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Стеллаж</label>
+              <input
+                value={form.rack}
+                onChange={(e) => setForm({ ...form, rack: e.target.value })}
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+                placeholder="напр. 3"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Полка</label>
+              <input
+                value={form.shelf}
+                onChange={(e) => setForm({ ...form, shelf: e.target.value })}
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+                placeholder="напр. 2"
               />
             </div>
             <div>

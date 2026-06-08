@@ -34,9 +34,12 @@ export interface Artwork {
   edition: string | null;
   description: string | null;
   condition: string | null;
+  style_period: string | null;
   has_expertise: boolean;
   status: string;
   location: string | null;
+  rack: string | null;
+  shelf: string | null;
   width_cm: number | null;
   height_cm: number | null;
   purchase_price: number | null;
@@ -77,6 +80,19 @@ export interface Client {
   description: string | null;
   preferred_artists: Artist[];
   created_at: string;
+}
+
+export interface ClientPurchase {
+  id: number;
+  artwork_id: number;
+  artwork_title: string | null;
+  artist_name: string | null;
+  sold_price: number;
+  sold_at: string;
+}
+
+export interface ClientDetail extends Client {
+  purchases: ClientPurchase[];
 }
 
 export interface Sale {

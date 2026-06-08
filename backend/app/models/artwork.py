@@ -42,9 +42,12 @@ class Artwork(Base):
     edition: Mapped[str | None] = mapped_column(String(100), default=None)
     description: Mapped[str | None] = mapped_column(Text, default=None)
     condition: Mapped[str | None] = mapped_column(Text, default=None)
+    style_period: Mapped[str | None] = mapped_column(Text, default=None)
     has_expertise: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[ArtworkStatus] = mapped_column(Enum(ArtworkStatus), default=ArtworkStatus.draft, index=True)
     location: Mapped[str | None] = mapped_column(String(300), default=None)
+    rack: Mapped[str | None] = mapped_column(String(100), default=None)   # стеллаж
+    shelf: Mapped[str | None] = mapped_column(String(100), default=None)  # полка
     width_cm: Mapped[float | None] = mapped_column(Numeric(8, 1), default=None)
     height_cm: Mapped[float | None] = mapped_column(Numeric(8, 1), default=None)
     purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)

@@ -171,12 +171,17 @@ async def _do_create(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> int:
         return CONFIRM
 
     technique_ids = await _match_techniques(parsed.get("technique"))
-    if parsed.get("technique") and not technique_ids:
-        import logging
-        logging.getLogger(__name__).warning(
-            "Не сматчили технику для распознанного '%s' (parsed: %s)",
-            parsed.get("technique"), parsed,
-        )
+    technique_text = (parsed.get("technique") or "").strip()
+    if technique_text and not technique_ids:
+        # Несматченную технику не теряем — заводим свою в справочнике (бэкенд дедуплицирует).
+        try:
+            created = await crm.create_technique(technique_text)
+            technique_ids = [created["id"]]
+        except Exception:
+            import logging
+            logging.getLogger(__name__).warning(
+                "Не удалось создать технику '%s' (parsed: %s)", technique_text, parsed,
+            )
 
     payload = _build_artwork_payload(parsed, artist_id, technique_ids, room_id=state.get("room_id"))
     artwork = await crm.create_artwork(payload)
@@ -387,6 +392,7 @@ def _build_artwork_payload(
         "year": int(parsed["year"]) if parsed.get("year") else None,
         "edition": parsed.get("edition"),
         "description": parsed.get("description") or parsed.get("notes"),
+        "style_period": parsed.get("style_period"),
         "location": parsed.get("location"),
         "width_cm": float(parsed["width_cm"]) if parsed.get("width_cm") else None,
         "height_cm": float(parsed["height_cm"]) if parsed.get("height_cm") else None,

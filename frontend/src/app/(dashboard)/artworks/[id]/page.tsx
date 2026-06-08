@@ -4,7 +4,7 @@ import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft, Edit3, Save, X, Trash2, ShoppingCart, Loader2, FileDown,
+  ArrowLeft, Edit3, Save, X, Trash2, ShoppingCart, Loader2, FileDown, Plus,
 } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
@@ -45,6 +45,8 @@ export default function ArtworkDetailPage({
   const [editing, setEditing] = useState(false);
   const [showSellModal, setShowSellModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [newTech, setNewTech] = useState("");
+  const [manualArtist, setManualArtist] = useState(false);
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminRole(user);
 
@@ -85,27 +87,58 @@ export default function ArtworkDetailPage({
     setForm({
       title: artwork.title || "",
       artist_id: artwork.artist.id,
+      new_artist_name: "",
       year: artwork.year || "",
       edition: artwork.edition || "",
       description: artwork.description || "",
       condition: artwork.condition || "",
+      style_period: artwork.style_period || "",
       location: artwork.location || "",
+      rack: artwork.rack || "",
+      shelf: artwork.shelf || "",
       width_cm: artwork.width_cm || "",
       height_cm: artwork.height_cm || "",
       purchase_price: artwork.purchase_price || "",
       sale_price: artwork.sale_price || "",
       room_id: artwork.room?.id ?? 0,
       is_framed: !!artwork.is_framed,
-      tags: artwork.tags || [],
+      tags: (artwork.tags || []).join(", "),  // сырая строка — иначе запятая «съедается» при вводе
       technique_ids: artwork.techniques.map((t) => t.id),
     });
+    setManualArtist(false);
+    setNewTech("");
     setEditing(true);
   }
 
+  // Добавить свою технику в справочник и сразу отметить её
+  const addTechnique = useMutation({
+    mutationFn: async (name: string) => {
+      const { data } = await api.post("/techniques", { name });
+      return data as Technique;
+    },
+    onSuccess: (tech) => {
+      queryClient.invalidateQueries({ queryKey: ["techniques"] });
+      setForm((f) => {
+        const ids = (f.technique_ids as number[]) || [];
+        return { ...f, technique_ids: ids.includes(tech.id) ? ids : [...ids, tech.id] };
+      });
+      setNewTech("");
+    },
+  });
+
   const updateMutation = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
+      // Новый художник, которого нет в базе — создаём и берём его id
+      let artistId = Number(form.artist_id) || 0;
+      const newArtistName = ((form.new_artist_name as string) || "").trim();
+      if (manualArtist && newArtistName) {
+        const { data: newArtist } = await api.post("/artists", { name_ru: newArtistName });
+        artistId = newArtist.id;
+      }
+
+      const tagsRaw = (form.tags as string) || "";
       const payload: Record<string, unknown> = {
-        ...form,
+        artist_id: artistId,
         year: form.year ? Number(form.year) : null,
         width_cm: form.width_cm ? Number(form.width_cm) : null,
         height_cm: form.height_cm ? Number(form.height_cm) : null,
@@ -114,21 +147,24 @@ export default function ArtworkDetailPage({
         edition: form.edition || null,
         description: form.description || null,
         condition: form.condition || null,
+        style_period: form.style_period || null,
         location: form.location || null,
+        rack: form.rack || null,
+        shelf: form.shelf || null,
         room_id: form.room_id ? Number(form.room_id) : null,
         is_framed: !!form.is_framed,
-        tags: form.tags || [],
+        tags: tagsRaw.split(",").map((t) => t.trim().replace(/^#/, "")).filter(Boolean),
+        technique_ids: (form.technique_ids as number[]) || [],
       };
-      // Закупочную цену передаём только если юзер — owner
+      // Закупочную цену передаём только если юзер — admin
       if (isAdmin) {
         payload.purchase_price = form.purchase_price ? Number(form.purchase_price) : null;
-      } else {
-        delete payload.purchase_price;
       }
       return api.put(`/artworks/${id}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artists"] });
       setEditing(false);
     },
   });
@@ -270,15 +306,38 @@ export default function ArtworkDetailPage({
           <div>
             {editing ? (
               <>
-                <select
-                  value={form.artist_id as number}
-                  onChange={(e) => setForm({ ...form, artist_id: Number(e.target.value) })}
-                  className="rounded border px-2 py-1 text-lg font-semibold"
-                >
-                  {artists.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name_ru}</option>
-                  ))}
-                </select>
+                {manualArtist ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      value={(form.new_artist_name as string) || ""}
+                      onChange={(e) => setForm({ ...form, new_artist_name: e.target.value })}
+                      className="rounded border border-amber-300 bg-amber-50 px-2 py-1 text-lg font-semibold"
+                      placeholder="Имя нового художника"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => { setManualArtist(false); setForm({ ...form, new_artist_name: "" }); }}
+                      className="rounded border px-2 py-1 text-xs text-gray-500"
+                    >
+                      Из базы
+                    </button>
+                  </div>
+                ) : (
+                  <select
+                    value={form.artist_id as number}
+                    onChange={(e) => {
+                      if (e.target.value === "new") { setManualArtist(true); return; }
+                      setForm({ ...form, artist_id: Number(e.target.value) });
+                    }}
+                    className="rounded border px-2 py-1 text-lg font-semibold"
+                  >
+                    {artists.map((a) => (
+                      <option key={a.id} value={a.id}>{a.name_ru}</option>
+                    ))}
+                    <option value="new">+ Добавить нового художника…</option>
+                  </select>
+                )}
                 <input
                   value={form.title as string}
                   onChange={(e) => setForm({ ...form, title: e.target.value })}
@@ -362,8 +421,16 @@ export default function ArtworkDetailPage({
               <input type="number" value={form.height_cm as string} onChange={(e) => setForm({ ...form, height_cm: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Местоположение</label>
+              <label className="mb-1 block text-xs text-gray-500">Местоположение / адрес</label>
               <input value={form.location as string} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Стеллаж</label>
+              <input value={form.rack as string} onChange={(e) => setForm({ ...form, rack: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" placeholder="напр. 3" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Полка</label>
+              <input value={form.shelf as string} onChange={(e) => setForm({ ...form, shelf: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" placeholder="напр. 2" />
             </div>
             {isAdmin && (
               <div>
@@ -395,13 +462,14 @@ export default function ArtworkDetailPage({
               </label>
             </div>
             <div className="col-span-full">
+              <label className="mb-1 block text-xs text-gray-500">Стиль / направление</label>
+              <input value={form.style_period as string} onChange={(e) => setForm({ ...form, style_period: e.target.value })} placeholder="напр. Импрессионизм, 1960-е" className="w-full rounded border px-2 py-1.5 text-sm" />
+            </div>
+            <div className="col-span-full">
               <label className="mb-1 block text-xs text-gray-500">Теги (через запятую, без #)</label>
               <input
-                value={((form.tags as string[]) || []).join(", ")}
-                onChange={(e) => setForm({
-                  ...form,
-                  tags: e.target.value.split(",").map((t) => t.trim().replace(/^#/, "")).filter(Boolean),
-                })}
+                value={(form.tags as string) || ""}
+                onChange={(e) => setForm({ ...form, tags: e.target.value })}
                 placeholder="пейзаж, абстракция, портрет"
                 className="w-full rounded border px-2 py-1.5 text-sm"
               />
@@ -434,6 +502,30 @@ export default function ArtworkDetailPage({
                   </button>
                 ))}
               </div>
+              {/* Своя техника */}
+              <div className="mt-2 flex gap-2">
+                <input
+                  value={newTech}
+                  onChange={(e) => setNewTech(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      if (newTech.trim()) addTechnique.mutate(newTech.trim());
+                    }
+                  }}
+                  placeholder="Своя техника (напр. «Левкас, темпера»)"
+                  className="flex-1 rounded border px-2 py-1.5 text-sm"
+                />
+                <button
+                  type="button"
+                  onClick={() => newTech.trim() && addTechnique.mutate(newTech.trim())}
+                  disabled={!newTech.trim() || addTechnique.isPending}
+                  className="flex items-center gap-1 rounded border px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {addTechnique.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  Добавить
+                </button>
+              </div>
             </div>
           </div>
         ) : (
@@ -446,6 +538,12 @@ export default function ArtworkDetailPage({
               <div className="col-span-2">
                 <p className="text-gray-500">Техника</p>
                 <p className="font-medium">{artwork.techniques.map((t) => t.name).join(", ")}</p>
+              </div>
+            )}
+            {artwork.style_period && (
+              <div className="col-span-2">
+                <p className="text-gray-500">Стиль / направление</p>
+                <p className="font-medium">{artwork.style_period}</p>
               </div>
             )}
             {(widthCm || heightCm) && (
@@ -470,6 +568,18 @@ export default function ArtworkDetailPage({
               <div>
                 <p className="text-gray-500">Местоположение</p>
                 <p className="font-medium">{artwork.location}</p>
+              </div>
+            )}
+            {artwork.rack && (
+              <div>
+                <p className="text-gray-500">Стеллаж</p>
+                <p className="font-medium">{artwork.rack}</p>
+              </div>
+            )}
+            {artwork.shelf && (
+              <div>
+                <p className="text-gray-500">Полка</p>
+                <p className="font-medium">{artwork.shelf}</p>
               </div>
             )}
             {artwork.condition && (

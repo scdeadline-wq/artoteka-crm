@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Edit3, X, Save, Search } from "lucide-react";
+import { Plus, Edit3, X, Save, Search, Trash2, Eye, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { AxiosError } from "axios";
 import api from "@/lib/api";
-import type { Client, Artist } from "@/lib/types";
+import type { Client, ClientDetail, Artist } from "@/lib/types";
 import { CLIENT_TYPE_LABELS } from "@/lib/types";
 
 const TYPES = ["buyer", "dealer", "referral"] as const;
@@ -16,11 +17,31 @@ export default function ClientsPage() {
   const [typeFilter, setTypeFilter] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
+  const [viewId, setViewId] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
 
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ["clients", search, typeFilter],
     queryFn: () =>
       api.get("/clients", { params: { q: search || undefined, client_type: typeFilter || undefined } }).then((r) => r.data),
+  });
+
+  const { data: viewClient, isLoading: viewLoading } = useQuery<ClientDetail>({
+    queryKey: ["client", viewId],
+    queryFn: () => api.get(`/clients/${viewId}/`).then((r) => r.data),
+    enabled: viewId !== null,
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => api.delete(`/clients/${id}/`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["clients"] });
+      setDeleteTarget(null);
+    },
+    onError: (err: AxiosError<{ detail?: string }>) => {
+      alert(err.response?.data?.detail || "Не удалось удалить клиента");
+      setDeleteTarget(null);
+    },
   });
 
   const { data: artists = [] } = useQuery<Artist[]>({
@@ -183,13 +204,23 @@ export default function ClientsPage() {
               <th className="px-4 py-3">Телефон</th>
               <th className="px-4 py-3">Telegram</th>
               <th className="px-4 py-3">Предпочтения</th>
-              <th className="px-4 py-3 w-16"></th>
+              <th className="px-4 py-3 w-28"></th>
             </tr>
           </thead>
           <tbody>
             {clients.map((c) => (
               <tr key={c.id} className={`border-b last:border-0 hover:bg-gray-50 ${editingId === c.id ? "bg-blue-50" : ""}`}>
-                <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
+                <td className="px-4 py-3">
+                  <button
+                    onClick={() => setViewId(c.id)}
+                    className="font-medium text-gray-900 hover:text-blue-600 hover:underline"
+                  >
+                    {c.name}
+                  </button>
+                  {c.description && (
+                    <p className="mt-0.5 max-w-xs truncate text-xs text-gray-400">{c.description}</p>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <span className="rounded-full bg-gray-100 px-2 py-0.5 text-xs">
                     {CLIENT_TYPE_LABELS[c.client_type] || c.client_type}
@@ -201,12 +232,29 @@ export default function ClientsPage() {
                   {c.preferred_artists.map((a) => a.name_ru).join(", ") || "—"}
                 </td>
                 <td className="px-4 py-3">
-                  <button
-                    onClick={() => startEdit(c)}
-                    className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
-                  >
-                    <Edit3 size={14} />
-                  </button>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setViewId(c.id)}
+                      title="Карточка клиента"
+                      className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                    >
+                      <Eye size={14} />
+                    </button>
+                    <button
+                      onClick={() => startEdit(c)}
+                      title="Редактировать"
+                      className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                    >
+                      <Edit3 size={14} />
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(c)}
+                      title="Удалить"
+                      className="rounded p-1 text-gray-400 hover:bg-red-50 hover:text-red-600"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -216,6 +264,124 @@ export default function ClientsPage() {
           </tbody>
         </table>
       </div>
+
+      {/* Карточка клиента */}
+      {viewId !== null && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setViewId(null)}>
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            {viewLoading || !viewClient ? (
+              <div className="flex items-center justify-center py-10 text-gray-400">
+                <Loader2 size={20} className="animate-spin" />
+              </div>
+            ) : (
+              <>
+                <div className="mb-4 flex items-start justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">{viewClient.name}</h2>
+                    <span className="mt-1 inline-block rounded-full bg-gray-100 px-2 py-0.5 text-xs text-gray-600">
+                      {CLIENT_TYPE_LABELS[viewClient.client_type] || viewClient.client_type}
+                    </span>
+                  </div>
+                  <button onClick={() => setViewId(null)} className="rounded p-1 text-gray-400 hover:bg-gray-100">
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <p className="text-gray-500">Телефон</p>
+                    <p className="font-medium">{viewClient.phone || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Email</p>
+                    <p className="font-medium">{viewClient.email || "—"}</p>
+                  </div>
+                  <div>
+                    <p className="text-gray-500">Telegram</p>
+                    <p className="font-medium">{viewClient.telegram || "—"}</p>
+                  </div>
+                </div>
+
+                {viewClient.description && (
+                  <div className="mt-4 border-t pt-3">
+                    <p className="mb-1 text-sm text-gray-500">Описание / заметки</p>
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed text-gray-700">{viewClient.description}</p>
+                  </div>
+                )}
+
+                {viewClient.preferred_artists.length > 0 && (
+                  <div className="mt-4 border-t pt-3">
+                    <p className="mb-1 text-sm text-gray-500">Предпочтения по художникам</p>
+                    <p className="text-sm text-gray-700">{viewClient.preferred_artists.map((a) => a.name_ru).join(", ")}</p>
+                  </div>
+                )}
+
+                <div className="mt-4 border-t pt-3">
+                  <p className="mb-2 text-sm text-gray-500">
+                    Покупки ({viewClient.purchases.length})
+                  </p>
+                  {viewClient.purchases.length === 0 ? (
+                    <p className="text-sm text-gray-400">Пока нет покупок</p>
+                  ) : (
+                    <ul className="space-y-1.5">
+                      {viewClient.purchases.map((p) => (
+                        <li key={p.id} className="flex items-center justify-between text-sm">
+                          <Link
+                            href={`/artworks/${p.artwork_id}`}
+                            className="text-gray-700 hover:text-blue-600 hover:underline"
+                          >
+                            {p.artist_name ? `${p.artist_name} — ` : ""}{p.artwork_title || "Без названия"}
+                          </Link>
+                          <span className="whitespace-nowrap text-gray-500">
+                            {Number(p.sold_price).toLocaleString("ru")} ₽ · {new Date(p.sold_at).toLocaleDateString("ru")}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+
+                <div className="mt-5 flex gap-2">
+                  <button
+                    onClick={() => { const c = clients.find((x) => x.id === viewClient.id); setViewId(null); if (c) startEdit(c); }}
+                    className="flex items-center gap-1.5 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                  >
+                    <Edit3 size={14} /> Редактировать
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Подтверждение удаления */}
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-2 text-lg font-bold text-gray-900">Удалить клиента?</h2>
+            <p className="mb-4 text-sm text-gray-700">«{deleteTarget.name}»</p>
+            <p className="mb-4 text-xs text-gray-500">
+              Если за клиентом числятся покупки, удаление будет запрещено — история продаж сохраняется.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => deleteMutation.mutate(deleteTarget.id)}
+                disabled={deleteMutation.isPending}
+                className="flex-1 rounded-lg bg-red-600 py-2 text-sm font-medium text-white hover:bg-red-500 disabled:opacity-50"
+              >
+                {deleteMutation.isPending ? "Удаляю..." : "Удалить"}
+              </button>
+              <button
+                onClick={() => setDeleteTarget(null)}
+                className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
