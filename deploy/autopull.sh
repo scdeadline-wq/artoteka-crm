@@ -11,6 +11,12 @@ set -euo pipefail
 LOG=/var/log/artoteka-autopull.log
 REPO=/opt/artoteka-crm
 
+# Пауза: флаг ставит rollback.sh, чтобы cron не накатил обратно
+# сломанный origin/main. Снимается вручную: rm $REPO/.autopull-pause
+if [ -f "$REPO/.autopull-pause" ]; then
+  exit 0
+fi
+
 # Единственный экземпляр за раз
 exec 9>/tmp/artoteka-autopull.lock
 if ! flock -n 9; then
@@ -25,6 +31,11 @@ REMOTE="$(git rev-parse origin/main)"
 
 if [ "$LOCAL" = "$REMOTE" ]; then
   exit 0  # нечего деплоить
+fi
+
+# Лог без logrotate растёт бесконечно — при >10МБ обнуляем перед записью
+if [ -f "$LOG" ] && [ "$(wc -c < "$LOG")" -gt 10485760 ]; then
+  : > "$LOG"
 fi
 
 echo "=== $(date '+%F %T') deploy ${LOCAL:0:8} -> ${REMOTE:0:8} ===" >> "$LOG"

@@ -23,6 +23,8 @@ def require_whitelist(handler):
                 await update.message.reply_text(
                     f"Нет доступа. Сообщи администратору свой Telegram ID: {user.id if user else '?'}"
                 )
+            elif update.callback_query:
+                await update.callback_query.answer("Нет доступа", show_alert=True)
             return
         return await handler(update, context)
 

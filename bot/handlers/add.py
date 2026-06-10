@@ -35,6 +35,64 @@ async def add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return WAIT_PHOTO
 
 
+def _prefill_from_analysis(analysis: dict) -> dict:
+    """Маппит ответ POST /artworks/analyze-image/ (ключ 'suggested') в формат parsed.
+
+    Принцип: ничего не выдумываем. Если AI не узнала название/художника —
+    бэкенд вернёт null, и поле остаётся пустым.
+    """
+    suggested = analysis.get("suggested") or {}
+    prefill: dict = {}
+
+    if suggested.get("title"):
+        prefill["title"] = suggested["title"]
+
+    # Художник: сматченный из справочника CRM приоритетнее сырого предположения AI
+    artist = suggested.get("artist") or {}
+    artist_name = artist.get("name_ru") or artist.get("name_en") or suggested.get("artist_name_suggestion")
+    if artist_name:
+        prefill["artist_name"] = artist_name
+
+    if suggested.get("year"):
+        prefill["year"] = suggested["year"]
+
+    # Техники: сматченные со справочником, иначе — как назвала AI
+    technique_names = [t["name"] for t in (suggested.get("techniques") or []) if t.get("name")]
+    if not technique_names:
+        technique_names = (analysis.get("ai_raw") or {}).get("techniques") or []
+    if technique_names:
+        prefill["technique"] = ", ".join(technique_names)
+
+    if suggested.get("style_period"):
+        prefill["style_period"] = suggested["style_period"]
+    if suggested.get("width_cm"):
+        prefill["width_cm"] = suggested["width_cm"]
+    if suggested.get("height_cm"):
+        prefill["height_cm"] = suggested["height_cm"]
+    if suggested.get("description"):
+        prefill["description"] = suggested["description"]
+    return prefill
+
+
+def _format_recognized(prefill: dict) -> str:
+    lines = ["🔍 Распознала по фото:"]
+    if prefill.get("title"):
+        lines.append(f"Название: {prefill['title']}")
+    if prefill.get("artist_name"):
+        lines.append(f"Автор: {prefill['artist_name']}")
+    if prefill.get("year"):
+        lines.append(f"Год: {prefill['year']}")
+    if prefill.get("technique"):
+        lines.append(f"Техника: {prefill['technique']}")
+    if prefill.get("style_period"):
+        lines.append(f"Стиль: {prefill['style_period']}")
+    if prefill.get("width_cm") and prefill.get("height_cm"):
+        lines.append(f"Размер: {prefill['width_cm']} × {prefill['height_cm']} см")
+    if prefill.get("description"):
+        lines.append(f"Описание: {prefill['description']}")
+    return "\n".join(lines)
+
+
 async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
     photo = update.message.photo[-1]
     file = await photo.get_file()
@@ -44,11 +102,31 @@ async def receive_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     context.user_data["add_state"] = {"image_bytes": image_bytes}
 
-    await update.message.reply_text(
-        "🎙 Получил фото. Теперь отправь голосовое описание:\n"
-        "автор, название, год, техника, размер, цена, стиль.\n\n"
-        "Или напиши текстом."
-    )
+    # AI-анализ фото: предзаполняем черновик. Ошибка анализа не ломает флоу —
+    # просто остаёмся на ручном вводе.
+    status_msg = await update.message.reply_text("🔍 Анализирую фото…")
+    prefill: dict = {}
+    try:
+        analysis = await crm.analyze_image(image_bytes)
+        prefill = _prefill_from_analysis(analysis)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning("AI-анализ фото не удался", exc_info=True)
+
+    if prefill:
+        context.user_data["add_state"]["prefill"] = prefill
+        await status_msg.edit_text(
+            _format_recognized(prefill)
+            + "\n\n🎙 Дополни или поправь голосовым/текстом:\n"
+            "автор, название, год, техника, размер, цена, стиль.\n"
+            "Если всё верно — /skip."
+        )
+    else:
+        await status_msg.edit_text(
+            "🎙 Получил фото. Теперь отправь голосовое описание:\n"
+            "автор, название, год, техника, размер, цена, стиль.\n\n"
+            "Или напиши текстом."
+        )
     return WAIT_VOICE
 
 
@@ -85,6 +163,15 @@ async def receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text.strip()
     parsed = await parse_description(text)
     return await _show_preview(update, context, parsed)
+
+
+async def skip_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/skip после AI-анализа фото: берём только распознанное с фото."""
+    prefill = context.user_data.get("add_state", {}).get("prefill")
+    if not prefill:
+        await update.message.reply_text("Пропустить нечего — опиши работу голосом или текстом.")
+        return WAIT_VOICE
+    return await _show_preview(update, context, {})
 
 
 EDITABLE_FIELDS = [
@@ -154,8 +241,14 @@ def _format_preview(parsed: dict) -> str:
 
 
 async def _show_preview(update: Update, context: ContextTypes.DEFAULT_TYPE, parsed: dict):
-    context.user_data["add_state"]["parsed"] = parsed
-    await update.message.reply_text(_format_preview(parsed), reply_markup=_confirm_keyboard())
+    # Поверх AI-предзаполнения с фото накладываем то, что сказал/написал юзер
+    prefill = context.user_data["add_state"].get("prefill") or {}
+    merged = dict(prefill)
+    for key, value in parsed.items():
+        if value not in (None, "", []):
+            merged[key] = value
+    context.user_data["add_state"]["parsed"] = merged
+    await update.message.reply_text(_format_preview(merged), reply_markup=_confirm_keyboard())
     return CONFIRM
 
 
@@ -338,16 +431,23 @@ async def confirm_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return CONFIRM
 
 
+def _norm_name(value: str | None) -> str:
+    """Нормализация для сравнения имён: lower + схлопнуть пробелы."""
+    return " ".join((value or "").lower().split())
+
+
 async def _resolve_artist(name: str | None, force_create: bool = False) -> int | None:
     if not name:
         return None
     if not force_create:
+        # Только точное совпадение нормализованных строк — подстрочный матч
+        # цеплял «Иванов» к «Иванова». Нет точного — создаём нового.
+        norm = _norm_name(name)
         artists = await crm.list_artists()
         match = next(
             (
                 a for a in artists
-                if name.lower() in (a.get("name_ru") or "").lower()
-                or name.lower() in (a.get("name_en") or "").lower()
+                if _norm_name(a.get("name_ru")) == norm or _norm_name(a.get("name_en")) == norm
             ),
             None,
         )
@@ -419,6 +519,7 @@ def build_add_handler() -> ConversationHandler:
         states={
             WAIT_PHOTO: [MessageHandler(filters.PHOTO, receive_photo)],
             WAIT_VOICE: [
+                CommandHandler("skip", skip_voice),
                 MessageHandler(filters.VOICE | filters.AUDIO, receive_voice),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, receive_text),
             ],

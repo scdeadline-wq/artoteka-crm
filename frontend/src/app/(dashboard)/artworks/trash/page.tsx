@@ -3,11 +3,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, RotateCcw } from "lucide-react";
+import { ArrowLeft, RotateCcw, X } from "lucide-react";
 import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 interface TrashedArtwork {
   id: number;
@@ -38,11 +38,17 @@ export default function TrashPage() {
     enabled: canAccess,
   });
 
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+
   const restoreMutation = useMutation({
     mutationFn: (id: number) => api.post(`/artworks/${id}/restore`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["artworks-trash"] });
       queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось восстановить работу");
     },
   });
 
@@ -59,6 +65,15 @@ export default function TrashPage() {
         </Link>
         <h1 className="text-2xl font-bold text-gray-900">Корзина</h1>
       </div>
+
+      {errMsg && (
+        <div className="mb-4 flex items-center justify-between rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{errMsg}</span>
+          <button onClick={() => setErrMsg(null)} aria-label="Закрыть">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {isLoading ? (
         <p className="text-gray-500">Загрузка...</p>

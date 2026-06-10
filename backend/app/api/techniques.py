@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy import select, func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -40,6 +41,16 @@ async def create_technique(
 
     technique = Technique(name=name, category=(body.category or "Прочее"))
     db.add(technique)
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError:
+        # Гонка check-then-insert: кто-то успел создать раньше — отдаём существующую
+        await db.rollback()
+        existing = (await db.execute(
+            select(Technique).where(func.lower(Technique.name) == name.lower())
+        )).scalar_one_or_none()
+        if existing:
+            return existing
+        raise
     await db.refresh(technique)
     return technique

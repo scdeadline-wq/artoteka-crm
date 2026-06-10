@@ -4,13 +4,13 @@ import { use, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft, Edit3, Save, X, Trash2, ShoppingCart, Loader2, FileDown, Plus,
+  ArrowLeft, Edit3, Save, X, Trash2, ShoppingCart, Loader2, FileDown, Plus, Star, Undo2,
 } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
-import type { Artwork, Artist, Technique, Client, Room } from "@/lib/types";
+import type { Artwork, Artist, Technique, Client, Room, Sale } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 // import ArtworkMockup from "@/components/mockup";  // скрыто, image-модель недоступна
 
@@ -45,8 +45,10 @@ export default function ArtworkDetailPage({
   const [editing, setEditing] = useState(false);
   const [showSellModal, setShowSellModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showReserveModal, setShowReserveModal] = useState(false);
   const [newTech, setNewTech] = useState("");
   const [manualArtist, setManualArtist] = useState(false);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminRole(user);
 
@@ -76,8 +78,21 @@ export default function ArtworkDetailPage({
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ["clients"],
     queryFn: () => api.get("/clients").then((r) => r.data),
-    enabled: showSellModal,
+    // Клиенты нужны: в модалке продажи, в модалке резерва и чтобы показать имя клиента в резерве
+    enabled:
+      showSellModal ||
+      showReserveModal ||
+      (artwork?.status === "reserved" && artwork?.reserved_client_id != null),
   });
+
+  // Продажа этой работы (для отмены): GET /sales/ не фильтрует по artwork_id —
+  // берём весь список (отсортирован по дате ↓) и ищем продажу на клиенте.
+  const { data: sales = [] } = useQuery<Sale[]>({
+    queryKey: ["sales"],
+    queryFn: () => api.get("/sales").then((r) => r.data),
+    enabled: artwork?.status === "sold",
+  });
+  const artworkSale = sales.find((s) => s.artwork_id === Number(id));
 
   // Edit form state
   const [form, setForm] = useState<Record<string, unknown>>({});
@@ -166,6 +181,10 @@ export default function ArtworkDetailPage({
       queryClient.invalidateQueries({ queryKey: ["artwork", id] });
       queryClient.invalidateQueries({ queryKey: ["artists"] });
       setEditing(false);
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось сохранить изменения");
     },
   });
 
@@ -175,12 +194,102 @@ export default function ArtworkDetailPage({
       queryClient.invalidateQueries({ queryKey: ["artworks"] });
       router.push("/artworks");
     },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setShowDeleteConfirm(false);
+      setErrMsg(e?.response?.data?.detail || "Не удалось удалить работу");
+    },
   });
 
   const statusMutation = useMutation({
     mutationFn: (status: string) =>
       api.patch(`/artworks/${id}/status`, null, { params: { status } }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["artwork", id] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось сменить статус");
+    },
+  });
+
+  // Резерв: статус + поля клиента/срока/заметки одним PUT (бэк применяет exclude_unset)
+  const [reserveForm, setReserveForm] = useState({ client_id: 0, until: "", note: "" });
+  const reserveMutation = useMutation({
+    mutationFn: () =>
+      api.put(`/artworks/${id}`, {
+        status: "reserved",
+        reserved_client_id: reserveForm.client_id || null,
+        reserved_until: reserveForm.until || null,
+        reserve_note: reserveForm.note.trim() || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      setShowReserveModal(false);
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось оформить резерв");
+    },
+  });
+
+  // Отмена продажи: продажа удаляется, работа возвращается в статус «В продаже»
+  const cancelSaleMutation = useMutation({
+    mutationFn: (saleId: number) => api.delete(`/sales/${saleId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось отменить продажу");
+    },
+  });
+
+  // === Управление фото (доступно всегда, не только в режиме редактирования) ===
+  const uploadImageMutation = useMutation({
+    // ВАЖНО: URL обязан кончаться на «/» — иначе FastAPI отвечает 307 и фото грузится дважды
+    mutationFn: (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return api.post(`/artworks/${id}/images/`, fd);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось загрузить фото");
+    },
+  });
+
+  const deleteImageMutation = useMutation({
+    mutationFn: (imageId: number) => api.delete(`/artworks/${id}/images/${imageId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось удалить фото");
+    },
+  });
+
+  const setPrimaryImageMutation = useMutation({
+    // Слэш в конце пути — до query-строки (params), иначе 307
+    mutationFn: (imageId: number) =>
+      api.patch(`/artworks/${id}/images/${imageId}/`, null, { params: { is_primary: true } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось сделать фото главным");
+    },
   });
 
   // Sell modal state
@@ -202,7 +311,14 @@ export default function ArtworkDetailPage({
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      queryClient.invalidateQueries({ queryKey: ["sales"] });
       setShowSellModal(false);
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setShowSellModal(false);
+      setErrMsg(e?.response?.data?.detail || "Не удалось оформить продажу");
     },
   });
 
@@ -245,6 +361,24 @@ export default function ArtworkDetailPage({
               className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
               <FileDown size={14} /> PDF
+            </button>
+          )}
+          {!editing && artwork.status === "sold" && (
+            <button
+              onClick={() => {
+                if (!artworkSale) {
+                  setErrMsg("Продажа не найдена — обновите страницу");
+                  return;
+                }
+                if (window.confirm('Продажа будет удалена, работа вернётся в статус "В продаже". Продолжить?')) {
+                  cancelSaleMutation.mutate(artworkSale.id);
+                }
+              }}
+              disabled={cancelSaleMutation.isPending}
+              className="flex items-center gap-1.5 rounded-lg border border-red-300 px-4 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-50"
+            >
+              {cancelSaleMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Undo2 size={14} />}
+              Отменить продажу
             </button>
           )}
           {!editing && artwork.status !== "sold" && (
@@ -298,6 +432,15 @@ export default function ArtworkDetailPage({
           )}
         </div>
       </div>
+
+      {errMsg && (
+        <div className="mb-4 flex items-center justify-between rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{errMsg}</span>
+          <button onClick={() => setErrMsg(null)} aria-label="Закрыть">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Основная карточка */}
       <div className="mb-6 rounded-xl bg-white p-6 shadow-sm">
@@ -372,7 +515,19 @@ export default function ArtworkDetailPage({
                 {nextStatuses.map((s) => (
                   <button
                     key={s}
-                    onClick={() => statusMutation.mutate(s)}
+                    onClick={() => {
+                      // Перевод в резерв — через модалку (клиент / срок / заметка)
+                      if (s === "reserved") {
+                        setReserveForm({
+                          client_id: artwork.reserved_client_id ?? 0,
+                          until: artwork.reserved_until ?? "",
+                          note: artwork.reserve_note ?? "",
+                        });
+                        setShowReserveModal(true);
+                        return;
+                      }
+                      statusMutation.mutate(s);
+                    }}
                     className="rounded border px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100"
                   >
                     → {STATUS_LABELS[s]}
@@ -383,19 +538,90 @@ export default function ArtworkDetailPage({
           </div>
         </div>
 
-        {/* Фото */}
-        {hasImages && (
-          <div className="mb-6 flex gap-3 overflow-x-auto">
-            {artwork.images.map((img) => (
-              <img
-                key={img.id}
-                src={imageUrl(img.url)}
-                alt=""
-                className="h-56 rounded-lg object-cover"
-              />
-            ))}
+        {/* Инфо о резерве: для кого, до когда, заметка */}
+        {artwork.status === "reserved" &&
+          (artwork.reserved_client_id || artwork.reserved_until || artwork.reserve_note) && (
+          <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <p className="font-medium">
+              Резерв
+              {artwork.reserved_client_id && (
+                <>
+                  {" — для "}
+                  {clients.find((c) => c.id === artwork.reserved_client_id)?.name ||
+                    `клиента #${artwork.reserved_client_id}`}
+                </>
+              )}
+              {artwork.reserved_until &&
+                ` · держим до ${new Date(artwork.reserved_until).toLocaleDateString("ru")}`}
+            </p>
+            {artwork.reserve_note && (
+              <p className="mt-1 text-blue-800">{artwork.reserve_note}</p>
+            )}
           </div>
         )}
+
+        {/* Фото: добавить / удалить / сделать главным — доступно всегда */}
+        <div className="mb-6">
+          {hasImages && (
+            <div className="flex gap-3 overflow-x-auto pb-1">
+              {artwork.images.map((img) => (
+                <div key={img.id} className="group relative shrink-0">
+                  <img
+                    src={imageUrl(img.url)}
+                    alt=""
+                    className="h-56 rounded-lg object-cover"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm("Удалить это фото?")) {
+                        deleteImageMutation.mutate(img.id);
+                      }
+                    }}
+                    disabled={deleteImageMutation.isPending}
+                    title="Удалить фото"
+                    className="absolute right-1.5 top-1.5 rounded-full bg-black/50 p-1 text-white hover:bg-red-600 disabled:opacity-50"
+                  >
+                    <X size={14} />
+                  </button>
+                  {img.is_primary ? (
+                    <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-xs text-white">
+                      <Star size={10} className="fill-amber-400 text-amber-400" /> Главное
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setPrimaryImageMutation.mutate(img.id)}
+                      disabled={setPrimaryImageMutation.isPending}
+                      className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-xs text-white hover:bg-black/70 disabled:opacity-50"
+                    >
+                      <Star size={10} /> Сделать главным
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
+            {uploadImageMutation.isPending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Plus size={14} />
+            )}
+            {uploadImageMutation.isPending ? "Загружаю фото..." : "Добавить фото"}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              disabled={uploadImageMutation.isPending}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) uploadImageMutation.mutate(file);
+                e.target.value = "";
+              }}
+            />
+          </label>
+        </div>
 
         {/* Поля */}
         {editing ? (
@@ -651,6 +877,69 @@ export default function ArtworkDetailPage({
               </button>
               <button
                 onClick={() => setShowDeleteConfirm(false)}
+                className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модалка резерва */}
+      {showReserveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-lg font-bold text-gray-900">Поставить в резерв</h2>
+            <p className="mb-4 text-sm text-gray-500">
+              {artwork.title || "Без названия"} — {artwork.artist.name_ru}
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Клиент</label>
+                <select
+                  value={reserveForm.client_id}
+                  onChange={(e) => setReserveForm({ ...reserveForm, client_id: Number(e.target.value) })}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                >
+                  <option value={0}>Не указан</option>
+                  {clients.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Держим до</label>
+                <input
+                  type="date"
+                  value={reserveForm.until}
+                  onChange={(e) => setReserveForm({ ...reserveForm, until: e.target.value })}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Заметка</label>
+                <textarea
+                  value={reserveForm.note}
+                  onChange={(e) => setReserveForm({ ...reserveForm, note: e.target.value })}
+                  rows={2}
+                  placeholder="напр. ждёт перевода, просил не звонить до пятницы"
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => reserveMutation.mutate()}
+                disabled={reserveMutation.isPending}
+                className="flex-1 rounded-lg bg-blue-600 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                {reserveMutation.isPending ? "Сохраняю..." : "В резерв"}
+              </button>
+              <button
+                onClick={() => setShowReserveModal(false)}
                 className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
               >
                 Отмена

@@ -1,17 +1,19 @@
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, func, nullslast
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.sorting import surname_expr
 from app.auth import get_current_user, is_admin, require_admin
-from app.models import Artwork, ArtworkStatus, Artist, Technique, Image, User
+from app.models import Artwork, ArtworkStatus, Artist, Technique, Image, Sale, User
 from app.schemas.artwork import ArtworkCreate, ArtworkUpdate, ArtworkOut, ArtworkListOut
 from fastapi.responses import Response as FastAPIResponse
-from app.services.storage import upload_image, get_image_bytes
+from app.services.storage import upload_image, get_image_bytes, delete_object
 from app.services.ai import analyze_artwork_image
 from app.services.enhance import auto_enhance, smart_crop
 from app.services.mockup import generate_mockup, generate_custom_mockup
@@ -33,6 +35,29 @@ def _mask_for_role(out: ArtworkOut, user: User) -> ArtworkOut:
     return out
 
 
+def _parse_status(value: str) -> ArtworkStatus:
+    """Невалидный статус → 422 с перечнем допустимых, а не 500."""
+    try:
+        return ArtworkStatus(value)
+    except ValueError:
+        allowed = ", ".join(s.value for s in ArtworkStatus)
+        raise HTTPException(
+            status_code=422,
+            detail=f"Недопустимый статус «{value}». Допустимые: {allowed}",
+        )
+
+
+def _escape_like(value: str) -> str:
+    """Экранирует % и _ для ilike (escape='\\\\')."""
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _clear_reserve_fields(artwork: Artwork) -> None:
+    artwork.reserved_client_id = None
+    artwork.reserved_until = None
+    artwork.reserve_note = None
+
+
 @router.get("/", response_model=list[ArtworkListOut])
 async def list_artworks(
     status: str | None = None,
@@ -45,6 +70,8 @@ async def list_artworks(
     price_from: float | None = None,
     price_to: float | None = None,
     room_id: int | None = None,
+    rack: str | None = None,
+    shelf: str | None = None,
     q: str | None = None,
     sort: str | None = None,
     limit: int = Query(50, le=200),
@@ -63,7 +90,7 @@ async def list_artworks(
         .offset(offset)
     )
     if status:
-        stmt = stmt.where(Artwork.status == ArtworkStatus(status))
+        stmt = stmt.where(Artwork.status == _parse_status(status))
     if artist_id:
         stmt = stmt.where(Artwork.artist_id == artist_id)
     if technique_id:
@@ -82,17 +109,22 @@ async def list_artworks(
         stmt = stmt.where(Artwork.sale_price <= price_to)
     if room_id is not None:
         stmt = stmt.where(Artwork.room_id == room_id)
+    if rack:
+        stmt = stmt.where(Artwork.rack.ilike(f"%{_escape_like(rack)}%", escape="\\"))
+    if shelf:
+        stmt = stmt.where(Artwork.shelf.ilike(f"%{_escape_like(shelf)}%", escape="\\"))
     if q:
         from sqlalchemy import or_ as sa_or
         q_clean = q.strip().lstrip("№#").strip()
         if q_clean.isdigit():
             stmt = stmt.where(Artwork.inventory_number == int(q_clean))
         else:
+            q_like = f"%{_escape_like(q)}%"
             stmt = stmt.where(sa_or(
-                Artwork.title.ilike(f"%{q}%"),
-                Artwork.description.ilike(f"%{q}%"),
-                Artwork.artist.has(Artist.name_ru.ilike(f"%{q}%")),
-                Artwork.artist.has(Artist.name_en.ilike(f"%{q}%")),
+                Artwork.title.ilike(q_like, escape="\\"),
+                Artwork.description.ilike(q_like, escape="\\"),
+                Artwork.artist.has(Artist.name_ru.ilike(q_like, escape="\\")),
+                Artwork.artist.has(Artist.name_en.ilike(q_like, escape="\\")),
             ))
 
     # Сортировка. По фамилии = последнее слово из artists.name_ru (формат «Имя Фамилия»).
@@ -191,16 +223,32 @@ async def create_artwork(
         result = await db.execute(select(Technique).where(Technique.id.in_(body.technique_ids)))
         techniques = list(result.scalars().all())
 
-    inv_num = await _next_inventory_number(db)
     data = body.model_dump(exclude={"technique_ids"})
-    data["status"] = ArtworkStatus(data["status"])
+    data["status"] = _parse_status(data["status"])
     # purchase_price может задавать только admin
     if not is_admin(user):
         data.pop("purchase_price", None)
-    artwork = Artwork(**data, inventory_number=inv_num)
-    artwork.techniques = techniques
-    db.add(artwork)
-    await db.commit()
+
+    # Инв. номер = max+1 → возможна гонка на unique-индексе. Ретраим до 3 раз.
+    for attempt in range(3):
+        inv_num = await _next_inventory_number(db)
+        artwork = Artwork(**data, inventory_number=inv_num)
+        artwork.techniques = list(techniques)
+        db.add(artwork)
+        try:
+            await db.commit()
+            break
+        except IntegrityError:
+            await db.rollback()
+            if attempt == 2:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Не удалось выдать инвентарный номер (конфликт), попробуйте ещё раз",
+                )
+            # rollback экспайрит объекты сессии — перечитываем техники
+            if body.technique_ids:
+                result = await db.execute(select(Technique).where(Technique.id.in_(body.technique_ids)))
+                techniques = list(result.scalars().all())
 
     # Reload with relationships
     stmt = (
@@ -264,11 +312,21 @@ async def update_artwork(
     technique_ids = data.pop("technique_ids", None)
 
     if "status" in data:
-        data["status"] = ArtworkStatus(data["status"])
+        data["status"] = _parse_status(data["status"])
 
     # Менять purchase_price может только admin
     if not is_admin(user):
         data.pop("purchase_price", None)
+
+    # Снимаем резерв при смене статуса с reserved на любой другой
+    if (
+        "status" in data
+        and artwork.status == ArtworkStatus.reserved
+        and data["status"] != ArtworkStatus.reserved
+    ):
+        data["reserved_client_id"] = None
+        data["reserved_until"] = None
+        data["reserve_note"] = None
 
     for key, value in data.items():
         setattr(artwork, key, value)
@@ -301,6 +359,14 @@ async def soft_delete_artwork(
         raise HTTPException(status_code=404, detail="Artwork not found")
     if artwork.deleted_at is not None:
         raise HTTPException(status_code=400, detail="Already deleted")
+    sales_count = (
+        await db.execute(select(func.count(Sale.id)).where(Sale.artwork_id == artwork_id))
+    ).scalar()
+    if sales_count:
+        raise HTTPException(
+            status_code=409,
+            detail="Нельзя удалить работу: по ней оформлена продажа. Сначала отмените продажу.",
+        )
     artwork.deleted_at = datetime.now(timezone.utc)
     await db.commit()
     return {"ok": True, "id": artwork_id, "deleted_at": artwork.deleted_at.isoformat()}
@@ -420,7 +486,8 @@ async def artwork_pdf(
     if not artwork:
         raise HTTPException(status_code=404, detail="Artwork not found")
 
-    pdf_bytes = render_artwork_pdf(artwork, include_purchase_price=is_admin(user))
+    # weasyprint — синхронный и тяжёлый, не блокируем event loop
+    pdf_bytes = await asyncio.to_thread(render_artwork_pdf, artwork, include_purchase_price=is_admin(user))
     inv = artwork.inventory_number
     return FastAPIResponse(
         content=pdf_bytes,
@@ -439,7 +506,11 @@ async def change_status(
     artwork = await db.get(Artwork, artwork_id)
     if not artwork:
         raise HTTPException(status_code=404, detail="Artwork not found")
-    artwork.status = ArtworkStatus(status)
+    new_status = _parse_status(status)
+    # Снимаем резерв при смене статуса с reserved на любой другой
+    if artwork.status == ArtworkStatus.reserved and new_status != ArtworkStatus.reserved:
+        _clear_reserve_fields(artwork)
+    artwork.status = new_status
     await db.commit()
     return {"ok": True, "status": status}
 
@@ -464,6 +535,68 @@ async def upload_artwork_image(
     return {"id": image.id, "url": image.url}
 
 
+@router.delete("/{artwork_id}/images/{image_id}/", status_code=204)
+async def delete_artwork_image(
+    artwork_id: int,
+    image_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Удалить фото работы (и файл из MinIO). Если удалили primary —
+    primary становится первое оставшееся фото."""
+    stmt = select(Image).where(Image.id == image_id, Image.artwork_id == artwork_id)
+    image = (await db.execute(stmt)).scalar_one_or_none()
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    was_primary = image.is_primary
+    key = image.url.replace("/images/", "", 1)
+    await db.delete(image)
+    await db.flush()
+
+    if was_primary:
+        rest_stmt = (
+            select(Image)
+            .where(Image.artwork_id == artwork_id)
+            .order_by(Image.sort_order, Image.id)
+        )
+        rest = (await db.execute(rest_stmt)).scalars().all()
+        if rest:
+            rest[0].is_primary = True
+
+    await db.commit()
+
+    # Файл из MinIO — после успешного коммита; ошибка стораджа не должна ронять запрос
+    try:
+        await asyncio.to_thread(delete_object, key)
+    except Exception:
+        pass
+    return FastAPIResponse(status_code=204)
+
+
+@router.patch("/{artwork_id}/images/{image_id}/")
+async def update_artwork_image(
+    artwork_id: int,
+    image_id: int,
+    is_primary: bool = Query(...),
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    """Сделать фото главным (is_primary=true) — снимает primary с остальных."""
+    stmt = select(Image).where(Image.id == image_id, Image.artwork_id == artwork_id)
+    image = (await db.execute(stmt)).scalar_one_or_none()
+    if not image:
+        raise HTTPException(status_code=404, detail="Image not found")
+
+    if is_primary:
+        others_stmt = select(Image).where(Image.artwork_id == artwork_id, Image.id != image_id)
+        for other in (await db.execute(others_stmt)).scalars().all():
+            other.is_primary = False
+    image.is_primary = is_primary
+    await db.commit()
+    return {"id": image.id, "url": image.url, "is_primary": image.is_primary}
+
+
 @router.post("/enhance-image/")
 async def enhance_image_endpoint(
     file: UploadFile = File(...),
@@ -473,10 +606,11 @@ async def enhance_image_endpoint(
     """Улучшить фото: обрезка фона + авто-контраст/резкость."""
     image_bytes = await file.read()
 
+    # PIL-обработка синхронная и тяжёлая — не блокируем event loop
     if crop:
-        image_bytes = smart_crop(image_bytes)
+        image_bytes = await asyncio.to_thread(smart_crop, image_bytes)
 
-    image_bytes = auto_enhance(image_bytes)
+    image_bytes = await asyncio.to_thread(auto_enhance, image_bytes)
 
     return FastAPIResponse(
         content=image_bytes,
@@ -491,10 +625,19 @@ async def get_mockup(
     style: str = "office",
     t: str = "",
     db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
 ):
     """Генерирует мокап произведения в интерьере. Кеширует в MinIO."""
     import boto3
     from app.config import settings as cfg
+    from app.services.mockup import ROOM_PROMPTS
+
+    if style not in ROOM_PROMPTS:
+        allowed = ", ".join(ROOM_PROMPTS)
+        raise HTTPException(
+            status_code=422,
+            detail=f"Недопустимый стиль «{style}». Допустимые: {allowed}",
+        )
 
     # Проверяем кеш в MinIO
     cache_key = f"mockups/{artwork_id}/{style}.jpg"

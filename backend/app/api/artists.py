@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.sorting import surname_expr
-from app.auth import get_current_user
+from app.auth import get_current_user, require_admin
 from app.models import Artist, User
 from app.schemas.artist import ArtistCreate, ArtistUpdate, ArtistOut
 
@@ -27,7 +27,11 @@ async def list_artists(
     # По фамилии = последнее слово name_ru (данные в формате «Имя Фамилия»).
     stmt = select(Artist).order_by(surname_expr(Artist.name_ru), Artist.name_ru)
     if q:
-        stmt = stmt.where(Artist.name_ru.ilike(f"%{q}%") | Artist.name_en.ilike(f"%{q}%"))
+        from app.api.artworks import _escape_like
+        q_like = f"%{_escape_like(q)}%"
+        stmt = stmt.where(
+            Artist.name_ru.ilike(q_like, escape="\\") | Artist.name_en.ilike(q_like, escape="\\")
+        )
     if is_group is not None:
         stmt = stmt.where(Artist.is_group == is_group)
     return (await db.execute(stmt)).scalars().all()
@@ -188,9 +192,9 @@ async def _fill_bio_batch(items: list[dict]) -> list[dict]:
 @router.post("/fill-bios/")
 async def fill_bios(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ) -> dict:
-    """Заполняет bio через Claude у всех артистов с пустым bio."""
+    """Заполняет bio через Claude у всех артистов с пустым bio. Только admin."""
     if not settings.openrouter_api_key:
         raise HTTPException(status_code=500, detail="OpenRouter not configured")
 
@@ -274,9 +278,9 @@ async def _search_artist_snippets(artist: Artist) -> list[dict]:
 @router.post("/enrich-bios-with-search/")
 async def enrich_bios_with_search(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ) -> dict:
-    """Для всех артистов с пустым bio: делает Google-поиск, отдаёт сниппеты Claude."""
+    """Для всех артистов с пустым bio: Google-поиск + Claude. Только admin."""
     if not settings.openrouter_api_key:
         raise HTTPException(status_code=500, detail="OpenRouter not configured")
     if not settings.searchapi_key:
@@ -361,9 +365,9 @@ async def enrich_bios_with_search(
 @router.post("/translate-names/")
 async def translate_names(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    _: User = Depends(require_admin),
 ) -> dict:
-    """Заполняет name_en у всех артистов с пустым английским именем (через Claude)."""
+    """Заполняет name_en у всех артистов с пустым name_en (через Claude). Только admin."""
     if not settings.openrouter_api_key:
         raise HTTPException(status_code=500, detail="OpenRouter not configured")
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Plus, Search, Trash2 } from "lucide-react";
@@ -20,6 +20,9 @@ const STATUS_COLORS: Record<string, string> = {
   collection: "bg-orange-100 text-orange-800",
   on_exhibition: "bg-teal-100 text-teal-800",
 };
+
+// Размер страницы списка (совпадает с default limit на бэке)
+const PAGE_SIZE = 50;
 
 export default function ArtworksPage() {
   // useSearchParams требует Suspense-границу, иначе падает прод-сборка.
@@ -43,6 +46,8 @@ function ArtworksContent() {
   const [priceFrom, setPriceFrom] = useState("");
   const [priceTo, setPriceTo] = useState("");
   const [framedFilter, setFramedFilter] = useState<"" | "true" | "false">("");
+  const [rackFilter, setRackFilter] = useState("");
+  const [shelfFilter, setShelfFilter] = useState("");
   const [sort, setSort] = useState<"" | "last_name" | "inventory" | "price_asc" | "price_desc">("");
   // 0 = «Все»; иначе id комнаты.
   const [roomId, setRoomId] = useState<number>(0);
@@ -62,14 +67,17 @@ function ArtworksContent() {
     queryFn: () => api.get("/rooms/").then((r) => r.data),
   });
 
-  const { data: artworks = [], isLoading } = useQuery<ArtworkListItem[]>({
+  // Пагинация «Показать ещё»: страницы накапливаются; смена любого фильтра/поиска/сортировки
+  // меняет queryKey — react-query сам сбрасывает накопленные страницы (offset снова 0).
+  const { data, isLoading, fetchNextPage, hasNextPage, isFetchingNextPage } = useInfiniteQuery({
     queryKey: [
       "artworks", search, statusFilter, artistFilter, techniqueFilter,
       yearFrom, yearTo, tagFilter, priceFrom, priceTo, framedFilter, sort, roomId,
+      rackFilter, shelfFilter,
     ],
-    queryFn: () =>
+    queryFn: ({ pageParam }) =>
       api
-        .get("/artworks", {
+        .get<ArtworkListItem[]>("/artworks", {
           params: {
             q: search || undefined,
             status: statusFilter || undefined,
@@ -83,10 +91,19 @@ function ArtworksContent() {
             is_framed: framedFilter || undefined,
             sort: sort || undefined,
             room_id: roomId || undefined,
+            rack: rackFilter || undefined,
+            shelf: shelfFilter || undefined,
+            limit: PAGE_SIZE,
+            offset: pageParam,
           },
         })
         .then((r) => r.data),
+    initialPageParam: 0,
+    // API отдаёт плоский список без total: если страница пришла полной — вероятно, есть ещё.
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.length === PAGE_SIZE ? allPages.length * PAGE_SIZE : undefined,
   });
+  const artworks: ArtworkListItem[] = data?.pages.flat() ?? [];
 
   const resetFilters = () => {
     setSearch("");
@@ -99,12 +116,14 @@ function ArtworksContent() {
     setPriceFrom("");
     setPriceTo("");
     setFramedFilter("");
+    setRackFilter("");
+    setShelfFilter("");
     setSort("");
   };
   const filtersActive =
     !!search || !!statusFilter || !!artistFilter || !!techniqueFilter ||
     !!yearFrom || !!yearTo || !!tagFilter || !!priceFrom || !!priceTo ||
-    !!framedFilter || !!sort;
+    !!framedFilter || !!rackFilter || !!shelfFilter || !!sort;
 
   return (
     <div>
@@ -251,6 +270,20 @@ function ArtworksContent() {
           <option value="true">В раме</option>
           <option value="false">Без рамы</option>
         </select>
+        <div className="flex gap-1">
+          <input
+            placeholder="Стеллаж"
+            value={rackFilter}
+            onChange={(e) => setRackFilter(e.target.value)}
+            className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
+          />
+          <input
+            placeholder="Полка"
+            value={shelfFilter}
+            onChange={(e) => setShelfFilter(e.target.value)}
+            className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as "" | "last_name" | "inventory" | "price_asc" | "price_desc")}
@@ -277,6 +310,7 @@ function ArtworksContent() {
       ) : artworks.length === 0 ? (
         <p className="text-gray-500">Нет произведений</p>
       ) : (
+        <>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {artworks.map((aw) => (
             <Link
@@ -325,6 +359,20 @@ function ArtworksContent() {
             </Link>
           ))}
         </div>
+        {/* API не отдаёт total — показываем только число загруженных карточек */}
+        <div className="mt-6 flex flex-col items-center gap-2 pb-4">
+          <p className="text-xs text-gray-400">Показано: {artworks.length}</p>
+          {hasNextPage && (
+            <button
+              onClick={() => fetchNextPage()}
+              disabled={isFetchingNextPage}
+              className="rounded-lg border px-6 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            >
+              {isFetchingNextPage ? "Загружаю..." : "Показать ещё"}
+            </button>
+          )}
+        </div>
+        </>
       )}
     </div>
   );

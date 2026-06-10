@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from botocore.exceptions import ClientError
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
@@ -39,5 +40,11 @@ async def health():
 @app.get("/images/{path:path}")
 async def serve_image(path: str):
     """Proxy images from MinIO storage."""
-    data, content_type = get_image_bytes(path)
+    try:
+        data, content_type = get_image_bytes(path)
+    except ClientError as e:
+        code = e.response.get("Error", {}).get("Code")
+        if code in ("NoSuchKey", "404", "NoSuchBucket"):
+            raise HTTPException(status_code=404, detail="Image not found")
+        raise
     return Response(content=data, media_type=content_type, headers={"Cache-Control": "public, max-age=86400"})

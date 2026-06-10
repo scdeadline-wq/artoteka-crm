@@ -1,6 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
+import { Download } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
@@ -10,17 +12,95 @@ export default function SalesPage() {
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminRole(user);
 
+  // Фильтр за период (пусто = всё время)
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [exporting, setExporting] = useState(false);
+
   const { data: sales = [] } = useQuery<Sale[]>({
-    queryKey: ["sales"],
-    queryFn: () => api.get("/sales").then((r) => r.data),
+    queryKey: ["sales", dateFrom, dateTo],
+    queryFn: () =>
+      api
+        .get("/sales", {
+          params: { date_from: dateFrom || undefined, date_to: dateTo || undefined },
+        })
+        .then((r) => r.data),
+    placeholderData: keepPreviousData,
   });
 
+  // Тоталы считаются по отфильтрованному набору (сервер уже отдаёт за период)
   const totalRevenue = sales.reduce((s, x) => s + Number(x.sold_price), 0);
   const totalMargin = sales.reduce((s, x) => s + (x.margin ? Number(x.margin) : 0), 0);
+
+  async function exportCsv() {
+    setExporting(true);
+    try {
+      const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const params = new URLSearchParams();
+      if (dateFrom) params.set("date_from", dateFrom);
+      if (dateTo) params.set("date_to", dateTo);
+      const qs = params.toString();
+      const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+      const res = await fetch(`${base}/sales/export/${qs ? `?${qs}` : ""}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const period = [dateFrom, dateTo].filter(Boolean).join("_");
+      a.download = `sales_${period || "all"}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert("Не удалось выгрузить CSV");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div>
       <h1 className="mb-4 text-2xl font-bold text-gray-900">Продажи</h1>
+
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <div>
+          <label className="mb-1 block text-xs text-gray-500">С</label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="mb-1 block text-xs text-gray-500">По</label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="rounded-lg border px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
+          />
+        </div>
+        {(dateFrom || dateTo) && (
+          <button
+            onClick={() => { setDateFrom(""); setDateTo(""); }}
+            className="rounded-lg border px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            Сбросить
+          </button>
+        )}
+        <button
+          onClick={exportCsv}
+          disabled={exporting}
+          className="ml-auto flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+        >
+          <Download size={14} /> {exporting ? "Выгружаю..." : "Экспорт CSV"}
+        </button>
+      </div>
 
       {sales.length > 0 && (
         <div className="mb-4 flex gap-4">

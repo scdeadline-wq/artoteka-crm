@@ -1,10 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, Search } from "lucide-react";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { Plus, Search, Edit3, Save, X } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
+import { useDebounced } from "@/lib/use-debounced";
 import type { Artist } from "@/lib/types";
 
 export default function ArtistsPage() {
@@ -13,21 +14,27 @@ export default function ArtistsPage() {
   const [nameRu, setNameRu] = useState("");
   const [nameEn, setNameEn] = useState("");
   const [isGroup, setIsGroup] = useState(false);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+
+  const [editing, setEditing] = useState<Artist | null>(null);
+  const [editForm, setEditForm] = useState({ name_ru: "", name_en: "", is_group: false, bio: "" });
 
   const [search, setSearch] = useState("");
   const [groupFilter, setGroupFilter] = useState<"all" | "single" | "group">("all");
+  const debouncedSearch = useDebounced(search);
 
   const { data: artists = [] } = useQuery<Artist[]>({
-    queryKey: ["artists", search, groupFilter],
+    queryKey: ["artists", debouncedSearch, groupFilter],
     queryFn: () =>
       api
         .get("/artists", {
           params: {
-            q: search || undefined,
+            q: debouncedSearch || undefined,
             is_group: groupFilter === "all" ? undefined : groupFilter === "group",
           },
         })
         .then((r) => r.data),
+    placeholderData: keepPreviousData,
   });
 
   // Фамилия = ПОСЛЕДНЕЕ слово name_ru (данные в формате «Имя Фамилия»),
@@ -67,8 +74,40 @@ export default function ArtistsPage() {
       setNameRu("");
       setNameEn("");
       setIsGroup(false);
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось создать художника");
     },
   });
+
+  const update = useMutation({
+    mutationFn: (id: number) =>
+      api.put(`/artists/${id}/`, {
+        name_ru: editForm.name_ru,
+        name_en: editForm.name_en || null,
+        is_group: editForm.is_group,
+        bio: editForm.bio || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artists"] });
+      setEditing(null);
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось сохранить художника");
+    },
+  });
+
+  function startEdit(a: Artist) {
+    setEditForm({
+      name_ru: a.name_ru,
+      name_en: a.name_en || "",
+      is_group: a.is_group,
+      bio: a.bio || "",
+    });
+    setEditing(a);
+  }
 
   return (
     <div>
@@ -82,6 +121,15 @@ export default function ArtistsPage() {
           Добавить
         </button>
       </div>
+
+      {errMsg && (
+        <div className="mb-4 flex items-center justify-between rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{errMsg}</span>
+          <button onClick={() => setErrMsg(null)} aria-label="Закрыть">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {showForm && (
         <form
@@ -160,10 +208,10 @@ export default function ArtistsPage() {
               </header>
               <ul>
                 {items.map((a) => (
-                  <li key={a.id} className="border-b last:border-0">
+                  <li key={a.id} className="flex items-center border-b last:border-0 hover:bg-gray-50">
                     <Link
                       href={`/artworks?artist=${a.id}`}
-                      className="flex items-center gap-4 px-4 py-2.5 text-sm hover:bg-gray-50"
+                      className="flex flex-1 items-center gap-4 px-4 py-2.5 text-sm"
                       title="Показать работы этого художника"
                     >
                       <span className="font-medium text-gray-900 hover:text-blue-600">
@@ -178,11 +226,87 @@ export default function ArtistsPage() {
                         </span>
                       )}
                     </Link>
+                    <button
+                      onClick={() => startEdit(a)}
+                      title="Редактировать"
+                      className="mr-3 rounded p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                    >
+                      <Edit3 size={14} />
+                    </button>
                   </li>
                 ))}
               </ul>
             </section>
           ))}
+        </div>
+      )}
+
+      {/* Модалка редактирования художника */}
+      {editing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditing(null)}>
+          <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-xl bg-white p-6 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="mb-4 flex items-start justify-between">
+              <h2 className="text-xl font-bold text-gray-900">Редактировать художника</h2>
+              <button onClick={() => setEditing(null)} className="rounded p-1 text-gray-400 hover:bg-gray-100">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">Имя (рус) *</label>
+                  <input
+                    value={editForm.name_ru}
+                    onChange={(e) => setEditForm({ ...editForm, name_ru: e.target.value })}
+                    className="w-full rounded-lg border px-3 py-2 text-sm"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">Имя (англ)</label>
+                  <input
+                    value={editForm.name_en}
+                    onChange={(e) => setEditForm({ ...editForm, name_en: e.target.value })}
+                    className="w-full rounded-lg border px-3 py-2 text-sm"
+                  />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={editForm.is_group}
+                  onChange={(e) => setEditForm({ ...editForm, is_group: e.target.checked })}
+                />
+                Группа
+              </label>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Биография</label>
+                <textarea
+                  value={editForm.bio}
+                  onChange={(e) => setEditForm({ ...editForm, bio: e.target.value })}
+                  rows={5}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="mt-5 flex gap-2">
+              <button
+                onClick={() => update.mutate(editing.id)}
+                disabled={!editForm.name_ru.trim() || update.isPending}
+                className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
+              >
+                <Save size={14} /> {update.isPending ? "Сохраняю..." : "Сохранить"}
+              </button>
+              <button
+                onClick={() => setEditing(null)}
+                className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

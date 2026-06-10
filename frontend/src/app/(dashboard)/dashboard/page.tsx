@@ -5,10 +5,22 @@ import api from "@/lib/api";
 import type { DashboardSummary } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 
+interface TopArtist {
+  artist_id: number;
+  name: string;
+  sales_count: number;
+  total_revenue: number;
+}
+
 export default function DashboardPage() {
   const { data, isLoading } = useQuery<DashboardSummary>({
     queryKey: ["dashboard"],
     queryFn: () => api.get("/dashboard/summary").then((r) => r.data),
+  });
+
+  const { data: topArtists = [] } = useQuery<TopArtist[]>({
+    queryKey: ["dashboard-top-artists"],
+    queryFn: () => api.get("/dashboard/top-artists/").then((r) => r.data),
   });
 
   if (isLoading) return <p className="text-gray-500">Загрузка...</p>;
@@ -57,6 +69,33 @@ export default function DashboardPage() {
           ))}
         </div>
       </div>
+
+      {topArtists.length > 0 && (
+        <div className="mt-6 rounded-xl bg-white p-5 shadow-sm">
+          <h2 className="mb-3 text-sm font-semibold text-gray-700">
+            Топ художников
+          </h2>
+          <ul className="divide-y">
+            {topArtists.map((a, i) => (
+              <li key={a.artist_id} className="flex items-center gap-3 py-2 text-sm">
+                <span className="w-5 text-right text-gray-400">{i + 1}.</span>
+                <span className="flex-1 font-medium text-gray-900">{a.name}</span>
+                <span className="text-xs text-gray-500">
+                  {a.sales_count}{" "}
+                  {a.sales_count % 10 === 1 && a.sales_count % 100 !== 11
+                    ? "продажа"
+                    : [2, 3, 4].includes(a.sales_count % 10) && ![12, 13, 14].includes(a.sales_count % 100)
+                    ? "продажи"
+                    : "продаж"}
+                </span>
+                <span className="whitespace-nowrap font-semibold text-gray-900">
+                  {a.total_revenue.toLocaleString("ru")} ₽
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

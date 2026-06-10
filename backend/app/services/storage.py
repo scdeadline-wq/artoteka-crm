@@ -32,6 +32,12 @@ async def upload_image(file: UploadFile, artwork_id: int) -> str:
     return f"/images/{key}"
 
 
+def delete_object(key: str) -> None:
+    """Удалить объект из S3 по key. Отсутствующий key — не ошибка."""
+    client = _get_s3_client()
+    client.delete_object(Bucket=settings.s3_bucket, Key=key)
+
+
 def get_image_bytes(key: str) -> tuple[bytes, str]:
     """Download image from S3 by key. Returns (bytes, content_type)."""
     client = _get_s3_client()

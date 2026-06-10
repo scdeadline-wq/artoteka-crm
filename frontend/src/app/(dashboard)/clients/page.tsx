@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Plus, Edit3, X, Save, Search, Trash2, Eye, Loader2 } from "lucide-react";
 import Link from "next/link";
 import { AxiosError } from "axios";
 import api from "@/lib/api";
+import { useDebounced } from "@/lib/use-debounced";
 import type { Client, ClientDetail, Artist } from "@/lib/types";
 import { CLIENT_TYPE_LABELS } from "@/lib/types";
 
@@ -19,11 +20,14 @@ export default function ClientsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [viewId, setViewId] = useState<number | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Client | null>(null);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
+  const debouncedSearch = useDebounced(search);
 
   const { data: clients = [] } = useQuery<Client[]>({
-    queryKey: ["clients", search, typeFilter],
+    queryKey: ["clients", debouncedSearch, typeFilter],
     queryFn: () =>
-      api.get("/clients", { params: { q: search || undefined, client_type: typeFilter || undefined } }).then((r) => r.data),
+      api.get("/clients", { params: { q: debouncedSearch || undefined, client_type: typeFilter || undefined } }).then((r) => r.data),
+    placeholderData: keepPreviousData,
   });
 
   const { data: viewClient, isLoading: viewLoading } = useQuery<ClientDetail>({
@@ -67,6 +71,10 @@ export default function ClientsPage() {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       setShowCreate(false);
       setForm(emptyForm);
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось создать клиента");
     },
   });
 
@@ -75,6 +83,10 @@ export default function ClientsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["clients"] });
       setEditingId(null);
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось сохранить клиента");
     },
   });
 
@@ -176,6 +188,15 @@ export default function ClientsPage() {
           <Plus size={16} /> Добавить
         </button>
       </div>
+
+      {errMsg && (
+        <div className="mb-4 flex items-center justify-between rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{errMsg}</span>
+          <button onClick={() => setErrMsg(null)} aria-label="Закрыть">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       <div className="mb-4 flex gap-3">
         <div className="relative flex-1">

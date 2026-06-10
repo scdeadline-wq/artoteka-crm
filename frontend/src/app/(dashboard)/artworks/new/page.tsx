@@ -43,6 +43,7 @@ export default function NewArtworkPage() {
   const [manualArtist, setManualArtist] = useState(false);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [errMsg, setErrMsg] = useState<string | null>(null);
   const [aiSuggestion, setAiSuggestion] = useState<AISuggestion | null>(null);
   const [aiSources, setAiSources] = useState<SearchSource[]>([]);
   const [enhanced, setEnhanced] = useState(false);
@@ -197,16 +198,37 @@ export default function NewArtworkPage() {
       }
       const { data: artwork } = await api.post("/artworks", payload);
 
-      // Загружаем фото
+      // Загружаем фото. Падение загрузки НЕ роняет всю мутацию —
+      // работа уже создана, об этом нужно сказать явно, а не молчать.
+      let imageFailed = false;
       if (imageFile) {
-        const fd = new FormData();
-        fd.append("file", imageFile);
-        await api.post(`/artworks/${artwork.id}/images?is_primary=true`, fd);
+        try {
+          const fd = new FormData();
+          fd.append("file", imageFile);
+          // ВАЖНО: слэш в конце пути — до query-строки, иначе FastAPI отдаёт 307
+          // и фото грузится дважды
+          await api.post(`/artworks/${artwork.id}/images/`, fd, {
+            params: { is_primary: true },
+          });
+        } catch {
+          imageFailed = true;
+        }
       }
 
-      return artwork;
+      return { artwork, imageFailed };
     },
-    onSuccess: () => router.push("/artworks"),
+    onSuccess: ({ artwork, imageFailed }) => {
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      if (imageFailed) {
+        alert("Работа создана, но фото не загрузилось. Добавьте его в карточке работы.");
+        router.push(`/artworks/${artwork.id}`);
+        return;
+      }
+      router.push("/artworks");
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось создать работу");
+    },
   });
 
   const handleDrop = useCallback(
@@ -375,10 +397,26 @@ export default function NewArtworkPage() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
+          // Защита от дабл-клика/повторного Enter — иначе создаются дубликаты
+          if (create.isPending) return;
+          // Валидация художника вручную: required на select с value=0 не срабатывает
+          if (!form.artist_id && !form.new_artist_name.trim()) {
+            setErrMsg("Выберите художника из базы или введите имя нового");
+            return;
+          }
+          setErrMsg(null);
           create.mutate();
         }}
         className="space-y-5"
       >
+        {errMsg && (
+          <div className="flex items-center justify-between rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+            <span>{errMsg}</span>
+            <button type="button" onClick={() => setErrMsg(null)} aria-label="Закрыть">
+              <X size={14} />
+            </button>
+          </div>
+        )}
         {/* Фото-превью */}
         <div className="flex gap-4 rounded-xl bg-white p-5 shadow-sm">
           {imagePreview ? (
@@ -520,7 +558,7 @@ export default function NewArtworkPage() {
 
         {/* Основные поля */}
         <div className="rounded-xl bg-white p-5 shadow-sm">
-          <div className="mb-4 grid grid-cols-3 gap-4">
+          <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs text-gray-500">Год</label>
               <input
@@ -696,7 +734,7 @@ export default function NewArtworkPage() {
 
         {/* Цены и локация */}
         <div className="rounded-xl bg-white p-5 shadow-sm">
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             {isAdmin && (
               <div>
                 <label className="mb-1 block text-xs text-gray-500">
@@ -788,7 +826,7 @@ export default function NewArtworkPage() {
                 В раме
               </label>
             </div>
-            <div className="col-span-3">
+            <div className="col-span-full">
               <label className="mb-1 block text-xs text-gray-500">
                 Теги (через запятую, без #)
               </label>

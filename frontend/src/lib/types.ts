@@ -49,6 +49,10 @@ export interface Artwork {
   is_framed: boolean;
   tags: string[];
   deleted_at: string | null;
+  // Резерв: для кого держим, до какой даты (date-строка), заметка
+  reserved_client_id: number | null;
+  reserved_until: string | null;
+  reserve_note: string | null;
   techniques: Technique[];
   images: ImageData[];
   created_at: string;

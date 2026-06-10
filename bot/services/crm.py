@@ -96,10 +96,11 @@ class CRMClient:
         return response.json()
 
     async def update_artwork_status(self, artwork_id: int, status: str) -> dict[str, Any]:
+        # Бэкенд принимает status как query-параметр, не json-body.
         response = await self._request(
             "PATCH",
             f"/artworks/{artwork_id}/status/",
-            json={"status": status},
+            params={"status": status},
         )
         response.raise_for_status()
         return response.json()
@@ -115,8 +116,11 @@ class CRMClient:
         response.raise_for_status()
         return response.json()
 
-    async def list_clients(self) -> list[dict[str, Any]]:
-        response = await self._request("GET", "/clients/")
+    async def list_clients(self, query: str | None = None) -> list[dict[str, Any]]:
+        params: dict[str, Any] = {}
+        if query:
+            params["q"] = query  # бэкенд ищет по имени через ilike
+        response = await self._request("GET", "/clients/", params=params)
         response.raise_for_status()
         return response.json()
 

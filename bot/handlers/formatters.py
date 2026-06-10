@@ -2,7 +2,7 @@
 from io import BytesIO
 from html import escape
 
-from telegram import InputMediaPhoto, Message
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Message
 
 from bot.services.crm import crm
 
@@ -10,12 +10,18 @@ STATUS_LABEL = {
     "draft": "Черновик",
     "review": "На проверке",
     "for_sale": "В продаже",
-    "available": "Свободна",
     "reserved": "Зарезервирована",
     "sold": "Продана",
     "collection": "В коллекции",
     "on_exhibition": "На выставке",
 }
+
+
+def status_button_keyboard(artwork_id: int) -> InlineKeyboardMarkup:
+    """Кнопка «Изменить статус» под карточкой работы (обрабатывается в find.py)."""
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔄 Изменить статус", callback_data=f"chst:{artwork_id}"),
+    ]])
 
 
 def _fmt_price(value) -> str:
@@ -108,15 +114,20 @@ async def send_artwork_results(
                 photo_blobs.append(await crm.download_image(url))
             except Exception:
                 continue
+        markup = status_button_keyboard(full["id"])
         try:
             if len(photo_blobs) >= 2:
+                # У media group нет inline-кнопок — шлём альбом, а кнопку отдельным сообщением.
                 media = [InputMediaPhoto(media=BytesIO(photo_blobs[0]), caption=caption, parse_mode="HTML")]
                 media += [InputMediaPhoto(media=BytesIO(b)) for b in photo_blobs[1:]]
                 await message.reply_media_group(media=media)
+                await message.reply_text(f"№ {full.get('inventory_number')} — действия:", reply_markup=markup)
                 continue
             if len(photo_blobs) == 1:
-                await message.reply_photo(photo=BytesIO(photo_blobs[0]), caption=caption, parse_mode="HTML")
+                await message.reply_photo(
+                    photo=BytesIO(photo_blobs[0]), caption=caption, parse_mode="HTML", reply_markup=markup,
+                )
                 continue
         except Exception:
             pass
-        await message.reply_text(caption, parse_mode="HTML")
+        await message.reply_text(caption, parse_mode="HTML", reply_markup=markup)

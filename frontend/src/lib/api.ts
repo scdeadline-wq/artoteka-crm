@@ -21,7 +21,9 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401 && typeof window !== "undefined") {
+    // Не редиректим при ошибке самого логина — страница должна показать «Неверный логин или пароль»
+    const isLoginRequest = err.config?.url?.includes("/auth/login");
+    if (err.response?.status === 401 && !isLoginRequest && typeof window !== "undefined") {
       localStorage.removeItem("token");
       window.location.href = "/login";
     }

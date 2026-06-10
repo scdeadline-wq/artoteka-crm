@@ -1,10 +1,10 @@
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from sqlalchemy import (
     String, Text, Enum, ForeignKey, Integer, Numeric,
-    Boolean, DateTime, Table, Column, func,
+    Boolean, DateTime, Date, Table, Column, func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -55,6 +55,9 @@ class Artwork(Base):
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id", ondelete="SET NULL"), default=None, index=True)
     is_framed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    reserved_client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), default=None)
+    reserved_until: Mapped[date | None] = mapped_column(Date, default=None)
+    reserve_note: Mapped[str | None] = mapped_column(String(500), default=None)
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

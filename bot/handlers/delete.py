@@ -49,6 +49,8 @@ async def delete_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+@require_whitelist
+@require_admin
 async def delete_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -108,6 +110,8 @@ async def trash_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"...и ещё {len(items) - 20}. Чтобы увидеть остальное, чисти первые.")
 
 
+@require_whitelist
+@require_admin
 async def restore_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()

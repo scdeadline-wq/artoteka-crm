@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
 from pydantic import BaseModel
@@ -63,6 +63,9 @@ class ArtworkUpdate(BaseModel):
     is_framed: bool | None = None
     tags: list[str] | None = None
     technique_ids: list[int] | None = None
+    reserved_client_id: int | None = None
+    reserved_until: date | None = None
+    reserve_note: str | None = None
 
 
 class ArtworkOut(BaseModel):
@@ -88,6 +91,9 @@ class ArtworkOut(BaseModel):
     room: RoomOut | None = None
     is_framed: bool
     tags: list[str]
+    reserved_client_id: int | None = None
+    reserved_until: date | None = None
+    reserve_note: str | None = None
     deleted_at: datetime | None = None
     techniques: list[TechniqueOut]
     images: list[ImageOut]

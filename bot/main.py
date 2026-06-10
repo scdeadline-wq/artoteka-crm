@@ -5,14 +5,14 @@
 """
 import logging
 
-from telegram import BotCommand
-from telegram.ext import Application, CommandHandler
+from telegram import BotCommand, Update
+from telegram.ext import Application, CommandHandler, ContextTypes
 
 from bot.config import settings
 from bot.handlers.add import build_add_handler
 from bot.handlers.client import build_client_handler
 from bot.handlers.delete import build_delete_handlers
-from bot.handlers.find import build_find_handler
+from bot.handlers.find import build_find_handler, build_status_handlers
 from bot.handlers.search import build_search_handler
 from bot.handlers.sold import build_sold_handler
 from bot.handlers.start import help_cmd, start
@@ -45,6 +45,16 @@ async def _on_shutdown(app: Application) -> None:
     await crm.close()
 
 
+async def _on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Глобальный error handler: логируем traceback и говорим пользователю, что что-то пошло не так."""
+    logger.error("Необработанная ошибка в handler", exc_info=context.error)
+    if isinstance(update, Update) and update.effective_message:
+        try:
+            await update.effective_message.reply_text("⚠️ Произошла ошибка, попробуйте ещё раз")
+        except Exception:  # noqa: BLE001 — не даём error handler'у упасть самому
+            logger.exception("Не смог отправить сообщение об ошибке пользователю")
+
+
 def main() -> None:
     if not settings.telegram_bot_token:
         raise RuntimeError("TELEGRAM_BOT_TOKEN не задан в окружении")
@@ -68,6 +78,9 @@ def main() -> None:
     app.add_handler(build_client_handler())
     for h in build_delete_handlers():
         app.add_handler(h)
+    for h in build_status_handlers():
+        app.add_handler(h)
+    app.add_error_handler(_on_error)
 
     logger.info("Bot запущен. Whitelist: %s | Admins: %s", settings.allowed_ids, settings.admin_ids)
     app.run_polling(allowed_updates=["message", "callback_query"])

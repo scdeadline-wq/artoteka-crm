@@ -48,6 +48,11 @@ case "$ANSWER" in
   *) echo "Отменено."; exit 0 ;;
 esac
 
+# Ставим autopull на паузу: в origin/main всё ещё лежит сломанный код,
+# и cron иначе накатит его обратно через 2 минуты. Снимаем ВРУЧНУЮ после фикса.
+touch .autopull-pause
+echo "==> autopull поставлен на паузу (.autopull-pause)"
+
 if [ -n "$LAST_REV" ]; then
   echo "==> [1/3] alembic downgrade -> $LAST_REV"
   $COMPOSE exec -T backend alembic downgrade "$LAST_REV"
@@ -55,17 +60,29 @@ else
   echo "==> [1/3] пропускаю alembic downgrade (ревизия не записана)"
 fi
 
-echo "==> [2/3] git checkout $LAST_SHA"
-git checkout "$LAST_SHA"
+# -B main: переносим ветку main на старый SHA вместо detached HEAD —
+# иначе autopull (git rev-parse HEAD / pull --ff-only) ломается.
+echo "==> [2/3] git checkout -B main $LAST_SHA"
+git checkout -B main "$LAST_SHA"
 
-echo "==> [3/3] rebuild"
-$COMPOSE up -d --build
+# Сборка ПОСЛЕДОВАТЕЛЬНО, по одному сервису (как в update.sh):
+# параллельный `up -d --build` ловил OOM-kill на `next build` (2GB RAM).
+echo "==> [3/3] rebuild (последовательно)"
+for svc in backend bot frontend; do
+  echo "    --- build $svc ---"
+  $COMPOSE build "$svc"
+done
+$COMPOSE up -d
 
 echo "==> ps"
 $COMPOSE ps --format 'table {{.Service}}\t{{.Status}}'
 
 echo ""
 echo "✅ Откат выполнен."
+echo ""
+echo "⚠️  autopull на паузе (флаг .autopull-pause в корне репозитория)."
+echo "   origin/main всё ещё содержит сломанный код — сначала запушь фикс,"
+echo "   после проверки сними паузу: rm /opt/artoteka-crm/.autopull-pause"
 echo ""
 echo "Если что-то пошло не так и БД повреждена — восстанови из pre-deploy dump:"
 echo "   docker exec deploy-minio-1 mc ls local/backups/pre-deploy/"
