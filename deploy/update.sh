@@ -30,7 +30,14 @@ TS="$(date +%Y-%m-%d_%H-%M-%S)"
 
 # --- Telegram-уведомления ----------------------------------------------------
 TG_TOKEN="$(grep -m1 '^TELEGRAM_BOT_TOKEN=' deploy/.env 2>/dev/null | cut -d= -f2- | tr -d '"\r' || true)"
-TG_CHAT="$(grep -m1 '^ADMIN_TELEGRAM_IDS=' deploy/.env 2>/dev/null | cut -d= -f2- | cut -d, -f1 | tr -d '"\r ' || true)"
+# Получатель: DEPLOY_NOTIFY_CHAT_ID → первый из ADMIN_TELEGRAM_IDS → первый из
+# ALLOWED_TELEGRAM_IDS (на проде ADMIN_TELEGRAM_IDS может быть не задан вовсе —
+# тогда уведомления молча не слались).
+TG_CHAT=""
+for _var in DEPLOY_NOTIFY_CHAT_ID ADMIN_TELEGRAM_IDS ALLOWED_TELEGRAM_IDS; do
+  TG_CHAT="$(grep -m1 "^${_var}=" deploy/.env 2>/dev/null | cut -d= -f2- | cut -d, -f1 | tr -d '"\r ' || true)"
+  if [ -n "$TG_CHAT" ]; then break; fi
+done
 
 notify() {
   [ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ] || return 0
