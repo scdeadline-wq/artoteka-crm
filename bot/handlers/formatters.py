@@ -1,10 +1,38 @@
 """Форматирование ответов бота и общий рендер результатов поиска."""
+import asyncio
+import logging
 from io import BytesIO
 from html import escape
 
+from PIL import Image
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto, Message
+from telegram.error import TimedOut
 
 from bot.services.crm import crm
+
+logger = logging.getLogger(__name__)
+
+
+def _shrink(blob: bytes, max_side: int = 1280) -> bytes:
+    """Ужимает фото до max_side по большей стороне перед отправкой в Telegram.
+
+    В MinIO лежат оригиналы на несколько мегабайт — их загрузка в Telegram
+    не успевала в write_timeout, бот получал TimedOut на уже доставленном
+    сообщении и слал карточку второй раз текстом. Telegram всё равно жмёт
+    фото примерно до 1280px, так что качество не теряем.
+    """
+    try:
+        img = Image.open(BytesIO(blob))
+        if max(img.size) <= max_side:
+            return blob
+        img.thumbnail((max_side, max_side))
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        out = BytesIO()
+        img.save(out, format="JPEG", quality=85)
+        return out.getvalue()
+    except Exception:
+        return blob
 
 STATUS_LABEL = {
     "draft": "Черновик",
@@ -111,7 +139,8 @@ async def send_artwork_results(
             if not url:
                 continue
             try:
-                photo_blobs.append(await crm.download_image(url))
+                blob = await crm.download_image(url)
+                photo_blobs.append(await asyncio.to_thread(_shrink, blob))
             except Exception:
                 continue
         markup = status_button_keyboard(full["id"])
@@ -128,6 +157,11 @@ async def send_artwork_results(
                     photo=BytesIO(photo_blobs[0]), caption=caption, parse_mode="HTML", reply_markup=markup,
                 )
                 continue
+        except TimedOut:
+            # Telegram при таймауте чаще всего УЖЕ доставил сообщение —
+            # повторная отправка текстом давала дубль карточки. Не дублируем.
+            logger.warning("TimedOut при отправке фото работы %s — фоллбек пропущен", full.get("id"))
+            continue
         except Exception:
-            pass
+            logger.warning("Не удалось отправить фото работы %s — шлю текстом", full.get("id"), exc_info=True)
         await message.reply_text(caption, parse_mode="HTML", reply_markup=markup)

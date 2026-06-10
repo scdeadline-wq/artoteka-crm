@@ -64,6 +64,12 @@ def main() -> None:
     app = (
         Application.builder()
         .token(settings.telegram_bot_token)
+        # Дефолтные 5с не хватало на загрузку фото с VPS (IPv6-маршрут до
+        # Telegram медленный) — TimedOut на уже доставленном сообщении.
+        .connect_timeout(10)
+        .read_timeout(15)
+        .write_timeout(30)
+        .media_write_timeout(60)
         .post_init(_post_init)
         .post_shutdown(_on_shutdown)
         .build()
