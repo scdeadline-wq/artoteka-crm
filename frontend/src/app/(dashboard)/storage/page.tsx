@@ -40,7 +40,7 @@ function RoomsSection() {
       <h2 className="mb-3 text-sm font-semibold text-gray-700">Комнаты</h2>
       {errMsg && <p className="mb-2 text-xs text-red-600">{errMsg}</p>}
       <form onSubmit={(e) => { e.preventDefault(); if (newName.trim()) create.mutate(); }} className="mb-3 flex gap-2">
-        <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="напр. Кабинет Паруйра" className="flex-1 rounded-lg border px-3 py-2 text-sm" />
+        <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="напр. Кабинет Паруйра" className="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm" />
         <button type="submit" disabled={!newName.trim() || create.isPending} className="flex items-center gap-1 rounded-lg bg-gray-900 px-3 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50">
           {create.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
         </button>
