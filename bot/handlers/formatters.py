@@ -92,8 +92,12 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
     room = a.get("room") or {}
     room_name = room.get("name") if isinstance(room, dict) else None
     style = a.get("style_period")
-    rack = a.get("rack")
-    shelf = a.get("shelf")
+
+    def _opt_name(v):
+        return v.get("name") if isinstance(v, dict) else None
+    warehouse_name = _opt_name(a.get("warehouse"))
+    rack_name = _opt_name(a.get("rack"))
+    shelf_name = _opt_name(a.get("shelf"))
     tags = a.get("tags") or []
 
     lines = [
@@ -112,10 +116,12 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
     storage_bits = []
     if room_name:
         storage_bits.append(f"Комната: {escape(str(room_name))}")
-    if rack:
-        storage_bits.append(f"Стеллаж: {escape(str(rack))}")
-    if shelf:
-        storage_bits.append(f"Полка: {escape(str(shelf))}")
+    if warehouse_name:
+        storage_bits.append(f"Склад: {escape(str(warehouse_name))}")
+    if rack_name:
+        storage_bits.append(f"Стеллаж: {escape(str(rack_name))}")
+    if shelf_name:
+        storage_bits.append(f"Полка: {escape(str(shelf_name))}")
     lines.append(f"№ {inv}" + (" · " + " · ".join(storage_bits) if storage_bits else ""))
     if tags:
         lines.append("Теги: " + " ".join(f"#{escape(str(t))}" for t in tags))

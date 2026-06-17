@@ -8,7 +8,7 @@ import { Plus, Search, Trash2 } from "lucide-react";
 import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
-import type { ArtworkListItem, Artist, Technique, Room } from "@/lib/types";
+import type { ArtworkListItem, Artist, Technique, Room, StorageOption } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 import { formatPrice } from "@/lib/currency";
 
@@ -47,8 +47,9 @@ function ArtworksContent() {
   const [priceFrom, setPriceFrom] = useState("");
   const [priceTo, setPriceTo] = useState("");
   const [framedFilter, setFramedFilter] = useState<"" | "true" | "false">("");
-  const [rackFilter, setRackFilter] = useState("");
-  const [shelfFilter, setShelfFilter] = useState("");
+  const [warehouseId, setWarehouseId] = useState<number>(0);
+  const [rackId, setRackId] = useState<number>(0);
+  const [shelfId, setShelfId] = useState<number>(0);
   const [sort, setSort] = useState<"" | "last_name" | "inventory" | "price_asc" | "price_desc">("");
   // 0 = «Все»; иначе id комнаты.
   const [roomId, setRoomId] = useState<number>(0);
@@ -67,6 +68,11 @@ function ArtworksContent() {
     queryKey: ["rooms"],
     queryFn: () => api.get("/rooms/").then((r) => r.data),
   });
+  const { data: storage = [] } = useQuery<StorageOption[]>({
+    queryKey: ["storage"],
+    queryFn: () => api.get("/storage/").then((r) => r.data),
+  });
+  const storageBy = (kind: string) => storage.filter((s) => s.kind === kind);
 
   // Пагинация «Показать ещё»: страницы накапливаются; смена любого фильтра/поиска/сортировки
   // меняет queryKey — react-query сам сбрасывает накопленные страницы (offset снова 0).
@@ -74,7 +80,7 @@ function ArtworksContent() {
     queryKey: [
       "artworks", search, statusFilter, artistFilter, techniqueFilter,
       yearFrom, yearTo, tagFilter, priceFrom, priceTo, framedFilter, sort, roomId,
-      rackFilter, shelfFilter,
+      warehouseId, rackId, shelfId,
     ],
     queryFn: ({ pageParam }) =>
       api
@@ -92,8 +98,9 @@ function ArtworksContent() {
             is_framed: framedFilter || undefined,
             sort: sort || undefined,
             room_id: roomId || undefined,
-            rack: rackFilter || undefined,
-            shelf: shelfFilter || undefined,
+            warehouse_id: warehouseId || undefined,
+            rack_id: rackId || undefined,
+            shelf_id: shelfId || undefined,
             limit: PAGE_SIZE,
             offset: pageParam,
           },
@@ -117,14 +124,15 @@ function ArtworksContent() {
     setPriceFrom("");
     setPriceTo("");
     setFramedFilter("");
-    setRackFilter("");
-    setShelfFilter("");
+    setWarehouseId(0);
+    setRackId(0);
+    setShelfId(0);
     setSort("");
   };
   const filtersActive =
     !!search || !!statusFilter || !!artistFilter || !!techniqueFilter ||
     !!yearFrom || !!yearTo || !!tagFilter || !!priceFrom || !!priceTo ||
-    !!framedFilter || !!rackFilter || !!shelfFilter || !!sort;
+    !!framedFilter || !!warehouseId || !!rackId || !!shelfId || !!sort;
 
   return (
     <div>
@@ -271,19 +279,31 @@ function ArtworksContent() {
           <option value="true">В раме</option>
           <option value="false">Без рамы</option>
         </select>
+        <select
+          value={warehouseId}
+          onChange={(e) => setWarehouseId(Number(e.target.value))}
+          className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
+        >
+          <option value={0}>Склад: любой</option>
+          {storageBy("warehouse").map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+        </select>
         <div className="flex gap-1">
-          <input
-            placeholder="Стеллаж"
-            value={rackFilter}
-            onChange={(e) => setRackFilter(e.target.value)}
-            className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
-          />
-          <input
-            placeholder="Полка"
-            value={shelfFilter}
-            onChange={(e) => setShelfFilter(e.target.value)}
-            className="h-10 w-full rounded-lg border px-3 text-sm focus:border-blue-500 focus:outline-none"
-          />
+          <select
+            value={rackId}
+            onChange={(e) => setRackId(Number(e.target.value))}
+            className="h-10 w-full rounded-lg border px-2 text-sm focus:border-blue-500 focus:outline-none"
+          >
+            <option value={0}>Стеллаж</option>
+            {storageBy("rack").map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+          </select>
+          <select
+            value={shelfId}
+            onChange={(e) => setShelfId(Number(e.target.value))}
+            className="h-10 w-full rounded-lg border px-2 text-sm focus:border-blue-500 focus:outline-none"
+          >
+            <option value={0}>Полка</option>
+            {storageBy("shelf").map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+          </select>
         </div>
         <select
           value={sort}

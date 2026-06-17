@@ -10,7 +10,7 @@ import Link from "next/link";
 import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
-import type { Artwork, Artist, Technique, Client, Room, Sale } from "@/lib/types";
+import type { Artwork, Artist, Technique, Client, Room, Sale, StorageOption } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 import { formatPrice, SUPPORTED_CURRENCIES } from "@/lib/currency";
 // import ArtworkMockup from "@/components/mockup";  // скрыто, image-модель недоступна
@@ -75,6 +75,12 @@ export default function ArtworkDetailPage({
     queryFn: () => api.get("/rooms/").then((r) => r.data),
     enabled: editing,
   });
+  const { data: storage = [] } = useQuery<StorageOption[]>({
+    queryKey: ["storage"],
+    queryFn: () => api.get("/storage/").then((r) => r.data),
+    enabled: editing,
+  });
+  const storageBy = (kind: string) => storage.filter((s) => s.kind === kind);
 
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ["clients"],
@@ -109,9 +115,9 @@ export default function ArtworkDetailPage({
       description: artwork.description || "",
       condition: artwork.condition || "",
       style_period: artwork.style_period || "",
-      location: artwork.location || "",
-      rack: artwork.rack || "",
-      shelf: artwork.shelf || "",
+      warehouse_id: artwork.warehouse?.id ?? 0,
+      rack_id: artwork.rack?.id ?? 0,
+      shelf_id: artwork.shelf?.id ?? 0,
       width_cm: artwork.width_cm || "",
       height_cm: artwork.height_cm || "",
       purchase_price: artwork.purchase_price || "",
@@ -166,9 +172,9 @@ export default function ArtworkDetailPage({
         description: form.description || null,
         condition: form.condition || null,
         style_period: form.style_period || null,
-        location: form.location || null,
-        rack: form.rack || null,
-        shelf: form.shelf || null,
+        warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
+        rack_id: form.rack_id ? Number(form.rack_id) : null,
+        shelf_id: form.shelf_id ? Number(form.shelf_id) : null,
         room_id: form.room_id ? Number(form.room_id) : null,
         is_framed: !!form.is_framed,
         tags: tagsRaw.split(",").map((t) => t.trim().replace(/^#/, "")).filter(Boolean),
@@ -653,16 +659,25 @@ export default function ArtworkDetailPage({
               <input type="number" value={form.height_cm as string} onChange={(e) => setForm({ ...form, height_cm: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Местоположение / адрес</label>
-              <input value={form.location as string} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
+              <label className="mb-1 block text-xs text-gray-500">Склад / адрес</label>
+              <select value={(form.warehouse_id as number) || 0} onChange={(e) => setForm({ ...form, warehouse_id: Number(e.target.value) })} className="w-full rounded border px-2 py-1.5 text-sm">
+                <option value={0}>— не указан —</option>
+                {storageBy("warehouse").map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Стеллаж</label>
-              <input value={form.rack as string} onChange={(e) => setForm({ ...form, rack: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" placeholder="напр. 3" />
+              <select value={(form.rack_id as number) || 0} onChange={(e) => setForm({ ...form, rack_id: Number(e.target.value) })} className="w-full rounded border px-2 py-1.5 text-sm">
+                <option value={0}>— не указан —</option>
+                {storageBy("rack").map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Полка</label>
-              <input value={form.shelf as string} onChange={(e) => setForm({ ...form, shelf: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" placeholder="напр. 2" />
+              <select value={(form.shelf_id as number) || 0} onChange={(e) => setForm({ ...form, shelf_id: Number(e.target.value) })} className="w-full rounded border px-2 py-1.5 text-sm">
+                <option value={0}>— не указана —</option>
+                {storageBy("shelf").map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+              </select>
             </div>
             {isAdmin && (
               <div>
@@ -804,22 +819,22 @@ export default function ArtworkDetailPage({
                 <p className="font-medium">{artwork.edition}</p>
               </div>
             )}
-            {artwork.location && (
+            {artwork.warehouse && (
               <div>
-                <p className="text-gray-500">Местоположение</p>
-                <p className="font-medium">{artwork.location}</p>
+                <p className="text-gray-500">Склад / адрес</p>
+                <p className="font-medium">{artwork.warehouse.name}</p>
               </div>
             )}
             {artwork.rack && (
               <div>
                 <p className="text-gray-500">Стеллаж</p>
-                <p className="font-medium">{artwork.rack}</p>
+                <p className="font-medium">{artwork.rack.name}</p>
               </div>
             )}
             {artwork.shelf && (
               <div>
                 <p className="text-gray-500">Полка</p>
-                <p className="font-medium">{artwork.shelf}</p>
+                <p className="font-medium">{artwork.shelf.name}</p>
               </div>
             )}
             {artwork.condition && (

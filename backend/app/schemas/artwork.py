@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from app.schemas.artist import ArtistOut
 from app.schemas.technique import TechniqueOut
 from app.schemas.room import RoomOut
+from app.schemas.storage import StorageOptionOut
 
 
 class ImageOut(BaseModel):
@@ -27,9 +28,9 @@ class ArtworkCreate(BaseModel):
     style_period: str | None = None
     has_expertise: bool = False
     status: str = "draft"
-    location: str | None = None
-    rack: str | None = None
-    shelf: str | None = None
+    warehouse_id: int | None = None
+    rack_id: int | None = None
+    shelf_id: int | None = None
     width_cm: float | None = None
     height_cm: float | None = None
     purchase_price: Decimal | None = None
@@ -52,9 +53,9 @@ class ArtworkUpdate(BaseModel):
     style_period: str | None = None
     has_expertise: bool | None = None
     status: str | None = None
-    location: str | None = None
-    rack: str | None = None
-    shelf: str | None = None
+    warehouse_id: int | None = None
+    rack_id: int | None = None
+    shelf_id: int | None = None
     width_cm: float | None = None
     height_cm: float | None = None
     purchase_price: Decimal | None = None
@@ -82,9 +83,9 @@ class ArtworkOut(BaseModel):
     style_period: str | None = None
     has_expertise: bool
     status: str
-    location: str | None
-    rack: str | None = None
-    shelf: str | None = None
+    warehouse: StorageOptionOut | None = None
+    rack: StorageOptionOut | None = None
+    shelf: StorageOptionOut | None = None
     width_cm: float | None
     height_cm: float | None
     purchase_price: Decimal | None = None

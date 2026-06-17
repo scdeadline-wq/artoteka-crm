@@ -25,6 +25,14 @@ export interface Room {
   sort_order: number;
 }
 
+// Место хранения: kind = warehouse | rack | shelf (склад/адрес · стеллаж · полка)
+export interface StorageOption {
+  id: number;
+  kind: string;
+  name: string;
+  sort_order: number;
+}
+
 export interface Artwork {
   id: number;
   inventory_number: number;
@@ -37,9 +45,9 @@ export interface Artwork {
   style_period: string | null;
   has_expertise: boolean;
   status: string;
-  location: string | null;
-  rack: string | null;
-  shelf: string | null;
+  warehouse: StorageOption | null;
+  rack: StorageOption | null;
+  shelf: StorageOption | null;
   width_cm: number | null;
   height_cm: number | null;
   purchase_price: number | null;

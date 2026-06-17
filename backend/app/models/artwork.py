@@ -45,9 +45,10 @@ class Artwork(Base):
     style_period: Mapped[str | None] = mapped_column(Text, default=None)
     has_expertise: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[ArtworkStatus] = mapped_column(Enum(ArtworkStatus), default=ArtworkStatus.draft, index=True)
-    location: Mapped[str | None] = mapped_column(String(300), default=None)
-    rack: Mapped[str | None] = mapped_column(String(100), default=None)   # стеллаж
-    shelf: Mapped[str | None] = mapped_column(String(100), default=None)  # полка
+    # Хранение — выпадающие справочники (admin ведёт, менеджер выбирает). См. StorageOption.
+    warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("storage_options.id", ondelete="SET NULL"), default=None)  # склад/адрес
+    rack_id: Mapped[int | None] = mapped_column(ForeignKey("storage_options.id", ondelete="SET NULL"), default=None)       # стеллаж
+    shelf_id: Mapped[int | None] = mapped_column(ForeignKey("storage_options.id", ondelete="SET NULL"), default=None)      # полка
     width_cm: Mapped[float | None] = mapped_column(Numeric(8, 1), default=None)
     height_cm: Mapped[float | None] = mapped_column(Numeric(8, 1), default=None)
     purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
@@ -69,6 +70,9 @@ class Artwork(Base):
     images: Mapped[list["Image"]] = relationship(back_populates="artwork", cascade="all, delete-orphan")
     attachments: Mapped[list["ArtworkAttachment"]] = relationship(back_populates="artwork", cascade="all, delete-orphan")
     room: Mapped["Room | None"] = relationship(back_populates="artworks")
+    warehouse: Mapped["StorageOption | None"] = relationship(foreign_keys=[warehouse_id])
+    rack: Mapped["StorageOption | None"] = relationship(foreign_keys=[rack_id])
+    shelf: Mapped["StorageOption | None"] = relationship(foreign_keys=[shelf_id])
 
 
 class Image(Base):

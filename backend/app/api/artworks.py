@@ -72,8 +72,9 @@ async def list_artworks(
     price_from: float | None = None,
     price_to: float | None = None,
     room_id: int | None = None,
-    rack: str | None = None,
-    shelf: str | None = None,
+    warehouse_id: int | None = None,
+    rack_id: int | None = None,
+    shelf_id: int | None = None,
     q: str | None = None,
     sort: str | None = None,
     limit: int = Query(50, le=200),
@@ -111,10 +112,12 @@ async def list_artworks(
         stmt = stmt.where(Artwork.sale_price <= price_to)
     if room_id is not None:
         stmt = stmt.where(Artwork.room_id == room_id)
-    if rack:
-        stmt = stmt.where(Artwork.rack.ilike(f"%{_escape_like(rack)}%", escape="\\"))
-    if shelf:
-        stmt = stmt.where(Artwork.shelf.ilike(f"%{_escape_like(shelf)}%", escape="\\"))
+    if warehouse_id is not None:
+        stmt = stmt.where(Artwork.warehouse_id == warehouse_id)
+    if rack_id is not None:
+        stmt = stmt.where(Artwork.rack_id == rack_id)
+    if shelf_id is not None:
+        stmt = stmt.where(Artwork.shelf_id == shelf_id)
     if q:
         from sqlalchemy import or_ as sa_or
         q_clean = q.strip().lstrip("№#").strip()
@@ -262,6 +265,9 @@ async def create_artwork(
             selectinload(Artwork.techniques),
             selectinload(Artwork.images),
             selectinload(Artwork.room),
+            selectinload(Artwork.warehouse),
+            selectinload(Artwork.rack),
+            selectinload(Artwork.shelf),
         )
         .where(Artwork.id == artwork.id)
     )
@@ -282,6 +288,9 @@ async def get_artwork(
             selectinload(Artwork.techniques),
             selectinload(Artwork.images),
             selectinload(Artwork.room),
+            selectinload(Artwork.warehouse),
+            selectinload(Artwork.rack),
+            selectinload(Artwork.shelf),
         )
         .where(Artwork.id == artwork_id)
     )
@@ -305,6 +314,9 @@ async def update_artwork(
             selectinload(Artwork.techniques),
             selectinload(Artwork.images),
             selectinload(Artwork.room),
+            selectinload(Artwork.warehouse),
+            selectinload(Artwork.rack),
+            selectinload(Artwork.shelf),
         )
         .where(Artwork.id == artwork_id)
     )
@@ -490,6 +502,9 @@ async def artwork_pdf(
             selectinload(Artwork.techniques),
             selectinload(Artwork.images),
             selectinload(Artwork.room),
+            selectinload(Artwork.warehouse),
+            selectinload(Artwork.rack),
+            selectinload(Artwork.shelf),
         )
         .where(Artwork.id == artwork_id)
     )
