@@ -48,9 +48,22 @@ def _image_data_url(artwork: Artwork) -> str | None:
 def _logo_data_url(logo_url: str | None) -> str | None:
     if not logo_url:
         return None
-    # Внешний URL — отдаём как есть (weasyprint сам загрузит); внутренний — через storage
+    # Внешний URL: пробуем скачать сами и встроить как data-url. Если не вышло
+    # (гео-блок, не картинка, напр. ссылка Google Drive «.../view») — None → в шапке покажется название галереи.
     if logo_url.startswith("http://") or logo_url.startswith("https://"):
-        return logo_url
+        try:
+            import urllib.request
+            req = urllib.request.Request(logo_url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=6) as r:
+                ct = r.headers.get("Content-Type", "")
+                if not ct.startswith("image/"):
+                    return None
+                data = r.read()
+            return f"data:{ct};base64,{base64.b64encode(data).decode()}"
+        except Exception as e:
+            log.warning("PDF: не удалось загрузить внешний логотип %r: %s", logo_url, e)
+            return None
+    # Внутренний путь (/images/...) — через наш storage
     return _fetch_data_url(logo_url)
 
 

@@ -66,6 +66,23 @@ def _clear_exhibition_fields(artwork: Artwork) -> None:
     artwork.exhibition_place = None
 
 
+def _exhibition_archive_line(artwork: Artwork) -> str | None:
+    """Строка для провенанса по завершённой выставке (или None, если данных нет)."""
+    if not (artwork.exhibition_from or artwork.exhibition_to or artwork.exhibition_place):
+        return None
+    place = artwork.exhibition_place or "Выставка"
+    period = ""
+    if artwork.exhibition_from or artwork.exhibition_to:
+        f = artwork.exhibition_from.strftime("%d.%m.%Y") if artwork.exhibition_from else "…"
+        t = artwork.exhibition_to.strftime("%d.%m.%Y") if artwork.exhibition_to else "…"
+        period = f" ({f} – {t})"
+    return f"Участвовала в выставке: {place}{period}."
+
+
+def _append_provenance(current: str | None, line: str) -> str:
+    return f"{current}\n{line}" if current else line
+
+
 @router.get("/", response_model=list[ArtworkListOut])
 async def list_artworks(
     status: str | None = None,
@@ -358,11 +375,16 @@ async def update_artwork(
         data["reserve_note"] = None
 
     # Снимаем данные выставки при смене статуса с on_exhibition на любой другой
+    # и переносим выставку в провенанс (чтобы не дублировать вручную)
     if (
         "status" in data
         and artwork.status == ArtworkStatus.on_exhibition
         and data["status"] != ArtworkStatus.on_exhibition
     ):
+        line = _exhibition_archive_line(artwork)
+        if line:
+            base_prov = data["provenance"] if "provenance" in data else artwork.provenance
+            data["provenance"] = _append_provenance(base_prov, line)
         data["exhibition_from"] = None
         data["exhibition_to"] = None
         data["exhibition_place"] = None
@@ -572,6 +594,10 @@ async def change_status(
     if artwork.status == ArtworkStatus.reserved and new_status != ArtworkStatus.reserved:
         _clear_reserve_fields(artwork)
     if artwork.status == ArtworkStatus.on_exhibition and new_status != ArtworkStatus.on_exhibition:
+        # Выставка закончилась → переносим её в провенанс, чтобы не дублировать вручную
+        line = _exhibition_archive_line(artwork)
+        if line:
+            artwork.provenance = _append_provenance(artwork.provenance, line)
         _clear_exhibition_fields(artwork)
     artwork.status = new_status
     await db.commit()
