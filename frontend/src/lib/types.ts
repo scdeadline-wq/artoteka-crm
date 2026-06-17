@@ -44,6 +44,7 @@ export interface Artwork {
   height_cm: number | null;
   purchase_price: number | null;
   sale_price: number | null;
+  currency: string;
   notes: string | null;
   room: Room | null;
   is_framed: boolean;
@@ -66,6 +67,7 @@ export interface ArtworkListItem {
   artist: Artist;
   status: string;
   sale_price: number | null;
+  currency: string;
   primary_image: string | null;
   year: number | null;
   room: Room | null;
@@ -92,6 +94,7 @@ export interface ClientPurchase {
   artwork_title: string | null;
   artist_name: string | null;
   sold_price: number;
+  currency: string;
   sold_at: string;
 }
 
@@ -112,17 +115,28 @@ export interface Sale {
   purchase_price: number | null;
   referral_fee: number | null;
   margin: number | null;
+  currency: string;
   notes: string | null;
   sold_at: string;
 }
 
 export interface DashboardSummary {
   total_sales: number;
-  total_revenue: number;
-  total_purchase?: number;
-  total_referral_fees: number;
-  margin?: number;
+  revenue_by_currency: Record<string, number>;
+  referral_by_currency: Record<string, number>;
+  purchase_by_currency?: Record<string, number>;
+  margin_by_currency?: Record<string, number>;
   artworks_by_status: Record<string, number>;
+  default_currency: string;
+}
+
+export interface AppSettings {
+  default_currency: string;
+  gallery_name: string;
+  pdf_logo_url: string | null;
+  pdf_watermark_enabled: boolean;
+  pdf_watermark_text: string | null;
+  currencies: Record<string, string>;
 }
 
 export const STATUS_LABELS: Record<string, string> = {

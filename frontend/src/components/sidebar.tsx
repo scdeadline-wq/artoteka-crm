@@ -12,6 +12,8 @@ import {
   LogOut,
   DoorOpen,
   UserCog,
+  Boxes,
+  Settings,
   Menu,
   X,
 } from "lucide-react";
@@ -24,7 +26,9 @@ const NAV = [
   { href: "/clients", label: "Клиенты", icon: Users },
   { href: "/sales", label: "Продажи", icon: Receipt },
   { href: "/rooms", label: "Комнаты", icon: DoorOpen, adminOnly: true },
+  { href: "/storage", label: "Хранение", icon: Boxes, adminOnly: true },
   { href: "/users", label: "Пользователи", icon: UserCog, adminOnly: true },
+  { href: "/settings", label: "Настройки", icon: Settings, adminOnly: true },
   // { href: "/mockup", label: "Мокап", icon: Sofa },  // скрыто: image-модель недоступна (geo-блок)
 ];
 

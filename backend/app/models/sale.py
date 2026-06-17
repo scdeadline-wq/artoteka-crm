@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import ForeignKey, Numeric, Text, DateTime, func
+from sqlalchemy import ForeignKey, Numeric, String, Text, DateTime, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -16,6 +16,7 @@ class Sale(Base):
     referral_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id"), default=None)
     sold_price: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     referral_fee: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", server_default="USD")  # валюта сделки
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     sold_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

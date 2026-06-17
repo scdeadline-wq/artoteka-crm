@@ -12,6 +12,7 @@ import { imageUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { Artwork, Artist, Technique, Client, Room, Sale } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
+import { formatPrice, SUPPORTED_CURRENCIES } from "@/lib/currency";
 // import ArtworkMockup from "@/components/mockup";  // скрыто, image-модель недоступна
 
 const STATUS_COLORS: Record<string, string> = {
@@ -115,6 +116,7 @@ export default function ArtworkDetailPage({
       height_cm: artwork.height_cm || "",
       purchase_price: artwork.purchase_price || "",
       sale_price: artwork.sale_price || "",
+      currency: artwork.currency || "USD",
       room_id: artwork.room?.id ?? 0,
       is_framed: !!artwork.is_framed,
       tags: (artwork.tags || []).join(", "),  // сырая строка — иначе запятая «съедается» при вводе
@@ -158,6 +160,7 @@ export default function ArtworkDetailPage({
         width_cm: form.width_cm ? Number(form.width_cm) : null,
         height_cm: form.height_cm ? Number(form.height_cm) : null,
         sale_price: form.sale_price ? Number(form.sale_price) : null,
+        currency: (form.currency as string) || undefined,
         title: form.title || null,
         edition: form.edition || null,
         description: form.description || null,
@@ -298,6 +301,7 @@ export default function ArtworkDetailPage({
     referral_id: 0,
     sold_price: "",
     referral_fee: "",
+    currency: "",
   });
 
   const sellMutation = useMutation({
@@ -308,6 +312,7 @@ export default function ArtworkDetailPage({
         referral_id: sellForm.referral_id || null,
         sold_price: Number(sellForm.sold_price),
         referral_fee: sellForm.referral_fee ? Number(sellForm.referral_fee) : null,
+        currency: sellForm.currency || artwork?.currency || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["artwork", id] });
@@ -389,6 +394,7 @@ export default function ArtworkDetailPage({
                   referral_id: 0,
                   sold_price: artwork.sale_price ? String(artwork.sale_price) : "",
                   referral_fee: "",
+                  currency: artwork.currency || "",
                 });
                 setShowSellModal(true);
               }}
@@ -660,13 +666,21 @@ export default function ArtworkDetailPage({
             </div>
             {isAdmin && (
               <div>
-                <label className="mb-1 block text-xs text-gray-500">Цена закупки (₽)</label>
+                <label className="mb-1 block text-xs text-gray-500">Цена закупки</label>
                 <input type="number" value={form.purchase_price as string} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
               </div>
             )}
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Цена продажи (₽)</label>
+              <label className="mb-1 block text-xs text-gray-500">Цена продажи</label>
               <input type="number" value={form.sale_price as string} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Валюта</label>
+              <select value={(form.currency as string) || "USD"} onChange={(e) => setForm({ ...form, currency: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm">
+                {SUPPORTED_CURRENCIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Комната</label>
@@ -817,13 +831,13 @@ export default function ArtworkDetailPage({
             {isAdmin && artwork.purchase_price != null && (
               <div>
                 <p className="text-gray-500">Цена закупки</p>
-                <p className="font-medium">{Number(artwork.purchase_price).toLocaleString("ru")} ₽</p>
+                <p className="font-medium">{formatPrice(artwork.purchase_price, artwork.currency)}</p>
               </div>
             )}
             {artwork.sale_price != null && (
               <div>
                 <p className="text-gray-500">Цена продажи</p>
-                <p className="font-semibold text-green-700">{Number(artwork.sale_price).toLocaleString("ru")} ₽</p>
+                <p className="font-semibold text-green-700">{formatPrice(artwork.sale_price, artwork.currency)}</p>
               </div>
             )}
             {artwork.room && (
@@ -986,9 +1000,9 @@ export default function ArtworkDetailPage({
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs text-gray-500">Цена продажи (₽) *</label>
+                  <label className="mb-1 block text-xs text-gray-500">Цена продажи *</label>
                   <input
                     type="number"
                     value={sellForm.sold_price}
@@ -998,7 +1012,19 @@ export default function ArtworkDetailPage({
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-gray-500">Реферальный % (₽)</label>
+                  <label className="mb-1 block text-xs text-gray-500">Валюта</label>
+                  <select
+                    value={sellForm.currency || artwork.currency || "USD"}
+                    onChange={(e) => setSellForm({ ...sellForm, currency: e.target.value })}
+                    className="w-full rounded-lg border px-3 py-2 text-sm"
+                  >
+                    {SUPPORTED_CURRENCIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">Реферальный взнос</label>
                   <input
                     type="number"
                     value={sellForm.referral_fee}

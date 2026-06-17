@@ -52,13 +52,23 @@ def status_button_keyboard(artwork_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
-def _fmt_price(value) -> str:
+CURRENCY_SYMBOLS = {"USD": "$", "EUR": "€", "RUB": "₽", "GBP": "£", "CNY": "¥"}
+
+
+def currency_symbol(code) -> str:
+    if not code:
+        return "$"
+    return CURRENCY_SYMBOLS.get(str(code).upper(), str(code))
+
+
+def _fmt_price(value, currency=None) -> str:
     if value in (None, ""):
         return "—"
     try:
-        return f"{int(float(value)):,} ₽".replace(",", " ")
+        amount = f"{int(float(value)):,}".replace(",", " ")
     except (TypeError, ValueError):
         return "—"
+    return f"{amount} {currency_symbol(currency)}"
 
 
 def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
@@ -76,7 +86,8 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
         size = f"{size} · в раме" if size != "—" else "В раме"
     elif is_framed is False and size != "—":
         size = f"{size} · без рамы"
-    sale_price = _fmt_price(a.get("sale_price"))
+    cur = a.get("currency")
+    sale_price = _fmt_price(a.get("sale_price"), cur)
     status = (a.get("status") or "draft").lower()
     room = a.get("room") or {}
     room_name = room.get("name") if isinstance(room, dict) else None
@@ -97,7 +108,7 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
         f"Цена: {sale_price}",
     ]
     if is_admin and a.get("purchase_price") not in (None, ""):
-        lines.append(f"Закупка: {_fmt_price(a.get('purchase_price'))}")
+        lines.append(f"Закупка: {_fmt_price(a.get('purchase_price'), cur)}")
     storage_bits = []
     if room_name:
         storage_bits.append(f"Комната: {escape(str(room_name))}")

@@ -230,7 +230,7 @@ def _format_preview(parsed: dict) -> str:
     if parsed.get("width_cm") and parsed.get("height_cm"):
         msg += f"Размер: {parsed['width_cm']} × {parsed['height_cm']} см\n"
     if parsed.get("sale_price"):
-        msg += f"Цена: {int(float(parsed['sale_price'])):,} ₽\n".replace(",", " ")
+        msg += f"Цена: {int(float(parsed['sale_price'])):,}\n".replace(",", " ")
     if parsed.get("edition"):
         msg += f"Тираж: {parsed['edition']}\n"
     if parsed.get("location"):
@@ -299,7 +299,7 @@ FIELD_PROMPTS = {
     "year": "Введи год (число):",
     "technique": "Введи технику (например, «Холст, масло»):",
     "size": "Введи размер: «ширина x высота» в см (например, 60x80):",
-    "sale_price": "Введи цену в рублях (число):",
+    "sale_price": "Введи цену (число):",
 }
 
 

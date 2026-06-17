@@ -77,6 +77,7 @@ async def get_client(
             artwork_title=s.artwork.title if s.artwork else None,
             artist_name=s.artwork.artist.name_ru if s.artwork and s.artwork.artist else None,
             sold_price=s.sold_price,
+            currency=s.currency or "USD",
             sold_at=s.sold_at,
         )
         for s in sorted(client.purchases, key=lambda x: x.sold_at, reverse=True)

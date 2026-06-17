@@ -34,6 +34,7 @@ class ArtworkCreate(BaseModel):
     height_cm: float | None = None
     purchase_price: Decimal | None = None
     sale_price: Decimal | None = None
+    currency: str | None = None  # None → берём дефолтную из настроек
     notes: str | None = None
     room_id: int | None = None
     is_framed: bool = False
@@ -58,6 +59,7 @@ class ArtworkUpdate(BaseModel):
     height_cm: float | None = None
     purchase_price: Decimal | None = None
     sale_price: Decimal | None = None
+    currency: str | None = None
     notes: str | None = None
     room_id: int | None = None
     is_framed: bool | None = None
@@ -87,6 +89,7 @@ class ArtworkOut(BaseModel):
     height_cm: float | None
     purchase_price: Decimal | None = None
     sale_price: Decimal | None
+    currency: str = "USD"
     notes: str | None
     room: RoomOut | None = None
     is_framed: bool
@@ -110,6 +113,7 @@ class ArtworkListOut(BaseModel):
     artist: ArtistOut
     status: str
     sale_price: Decimal | None
+    currency: str = "USD"
     primary_image: str | None = None
     year: int | None
     width_cm: float | None = None

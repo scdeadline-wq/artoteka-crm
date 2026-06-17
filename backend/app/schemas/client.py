@@ -47,6 +47,7 @@ class ClientPurchase(BaseModel):
     artwork_title: str | None
     artist_name: str | None
     sold_price: Decimal
+    currency: str = "USD"
     sold_at: datetime
 
 

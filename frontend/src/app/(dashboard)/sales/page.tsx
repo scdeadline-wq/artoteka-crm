@@ -7,6 +7,7 @@ import Link from "next/link";
 import api from "@/lib/api";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { Sale } from "@/lib/types";
+import { formatPrice } from "@/lib/currency";
 
 export default function SalesPage() {
   const user = useAuthStore((s) => s.user);
@@ -28,9 +29,18 @@ export default function SalesPage() {
     placeholderData: keepPreviousData,
   });
 
-  // Тоталы считаются по отфильтрованному набору (сервер уже отдаёт за период)
-  const totalRevenue = sales.reduce((s, x) => s + Number(x.sold_price), 0);
-  const totalMargin = sales.reduce((s, x) => s + (x.margin ? Number(x.margin) : 0), 0);
+  // Тоталы по отфильтрованному набору, с разбивкой по валютам (без конвертации)
+  const sumByCurrency = (pick: (x: Sale) => number) =>
+    sales.reduce<Record<string, number>>((acc, x) => {
+      const c = x.currency || "USD";
+      acc[c] = (acc[c] || 0) + pick(x);
+      return acc;
+    }, {});
+  const revenueByCurrency = sumByCurrency((x) => Number(x.sold_price));
+  const marginByCurrency = sumByCurrency((x) => (x.margin ? Number(x.margin) : 0));
+  const joinByCurrency = (map: Record<string, number>) =>
+    Object.entries(map).map(([c, v]) => formatPrice(v, c)).join(" · ") || "—";
+  const totalMarginSign = Object.values(marginByCurrency).reduce((a, b) => a + b, 0);
 
   async function exportCsv() {
     setExporting(true);
@@ -110,13 +120,13 @@ export default function SalesPage() {
           </div>
           <div className="rounded-xl bg-white px-4 py-3 shadow-sm">
             <p className="text-xs text-gray-500">Выручка</p>
-            <p className="text-lg font-bold">{totalRevenue.toLocaleString("ru")} ₽</p>
+            <p className="text-lg font-bold">{joinByCurrency(revenueByCurrency)}</p>
           </div>
           {isAdmin && (
             <div className="rounded-xl bg-white px-4 py-3 shadow-sm">
               <p className="text-xs text-gray-500">Маржа</p>
-              <p className={`text-lg font-bold ${totalMargin >= 0 ? "text-green-600" : "text-red-600"}`}>
-                {totalMargin.toLocaleString("ru")} ₽
+              <p className={`text-lg font-bold ${totalMarginSign >= 0 ? "text-green-600" : "text-red-600"}`}>
+                {joinByCurrency(marginByCurrency)}
               </p>
             </div>
           )}
@@ -152,18 +162,18 @@ export default function SalesPage() {
                 <td className="px-4 py-3 text-gray-600">{s.client_name}</td>
                 <td className="px-4 py-3 text-gray-500">{s.referral_name || "—"}</td>
                 <td className="px-4 py-3 text-right font-medium">
-                  {Number(s.sold_price).toLocaleString("ru")} ₽
+                  {formatPrice(s.sold_price, s.currency)}
                 </td>
                 {isAdmin && (
                   <td className="px-4 py-3 text-right text-gray-500">
-                    {s.purchase_price ? `${Number(s.purchase_price).toLocaleString("ru")} ₽` : "—"}
+                    {s.purchase_price != null ? formatPrice(s.purchase_price, s.currency) : "—"}
                   </td>
                 )}
                 {isAdmin && (
                   <td className={`px-4 py-3 text-right font-semibold ${
                     s.margin && Number(s.margin) > 0 ? "text-green-600" : s.margin ? "text-red-600" : ""
                   }`}>
-                    {s.margin != null ? `${Number(s.margin).toLocaleString("ru")} ₽` : "—"}
+                    {s.margin != null ? formatPrice(s.margin, s.currency) : "—"}
                   </td>
                 )}
               </tr>

@@ -7,6 +7,8 @@ import { Upload, Sparkles, Loader2, X, Check, Wand2, ExternalLink, Plus } from "
 import api from "@/lib/api";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { Artist, Technique, Room } from "@/lib/types";
+import { useDefaultCurrency } from "@/lib/useSettings";
+import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 
 type Step = "upload" | "review";
 
@@ -38,6 +40,7 @@ export default function NewArtworkPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminRole(user);
+  const defaultCurrency = useDefaultCurrency();
   const [step, setStep] = useState<Step>("upload");
   const [newTech, setNewTech] = useState("");
   const [manualArtist, setManualArtist] = useState(false);
@@ -77,6 +80,7 @@ export default function NewArtworkPage() {
     height_cm: "",
     purchase_price: "",
     sale_price: "",
+    currency: "",
     room_id: 0,
     is_framed: false,
     tags: "",
@@ -184,6 +188,7 @@ export default function NewArtworkPage() {
         width_cm: form.width_cm ? Number(form.width_cm) : null,
         height_cm: form.height_cm ? Number(form.height_cm) : null,
         sale_price: form.sale_price ? Number(form.sale_price) : null,
+        currency: form.currency || defaultCurrency,
         room_id: form.room_id || null,
         is_framed: !!form.is_framed,
         tags: form.tags
@@ -738,7 +743,7 @@ export default function NewArtworkPage() {
             {isAdmin && (
               <div>
                 <label className="mb-1 block text-xs text-gray-500">
-                  Цена закупки (₽)
+                  Цена закупки
                 </label>
                 <input
                   type="number"
@@ -753,7 +758,7 @@ export default function NewArtworkPage() {
             )}
             <div>
               <label className="mb-1 block text-xs text-gray-500">
-                Цена продажи (₽)
+                Цена продажи
                 {aiSuggestion?.estimated_price_rub && (
                   <span className="ml-1 text-amber-600">AI</span>
                 )}
@@ -767,6 +772,20 @@ export default function NewArtworkPage() {
                 }
                 className="w-full rounded-lg border px-3 py-2 text-sm"
               />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Валюта</label>
+              <select
+                value={form.currency || defaultCurrency}
+                onChange={(e) => setForm({ ...form, currency: e.target.value })}
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+              >
+                {SUPPORTED_CURRENCIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">

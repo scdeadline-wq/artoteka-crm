@@ -52,6 +52,7 @@ class Artwork(Base):
     height_cm: Mapped[float | None] = mapped_column(Numeric(8, 1), default=None)
     purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
     sale_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", server_default="USD")  # валюта цен работы
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id", ondelete="SET NULL"), default=None, index=True)
     is_framed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")

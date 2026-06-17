@@ -10,7 +10,9 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.sorting import surname_expr
 from app.auth import get_current_user, is_admin, require_admin
+from app.currency import normalize_currency
 from app.models import Artwork, ArtworkStatus, Artist, Technique, Image, Sale, User
+from app.services.settings import get_default_currency
 from app.schemas.artwork import ArtworkCreate, ArtworkUpdate, ArtworkOut, ArtworkListOut
 from fastapi.responses import Response as FastAPIResponse
 from app.services.storage import upload_image, get_image_bytes, delete_object
@@ -225,6 +227,8 @@ async def create_artwork(
 
     data = body.model_dump(exclude={"technique_ids"})
     data["status"] = _parse_status(data["status"])
+    # Валюта: явная → дефолт из настроек
+    data["currency"] = normalize_currency(data.get("currency")) if data.get("currency") else await get_default_currency(db)
     # purchase_price может задавать только admin
     if not is_admin(user):
         data.pop("purchase_price", None)
@@ -313,6 +317,13 @@ async def update_artwork(
 
     if "status" in data:
         data["status"] = _parse_status(data["status"])
+
+    # Валюта: нормализуем; пустую не затираем (колонка non-nullable)
+    if "currency" in data:
+        if data["currency"]:
+            data["currency"] = normalize_currency(data["currency"])
+        else:
+            data.pop("currency")
 
     # Менять purchase_price может только admin
     if not is_admin(user):

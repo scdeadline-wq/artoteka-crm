@@ -10,6 +10,7 @@ class SaleCreate(BaseModel):
     referral_id: int | None = None
     sold_price: Decimal
     referral_fee: Decimal | None = None
+    currency: str | None = None  # None → берём дефолтную из настроек
     notes: str | None = None
 
 
@@ -26,6 +27,7 @@ class SaleOut(BaseModel):
     purchase_price: Decimal | None = None
     referral_fee: Decimal | None
     margin: Decimal | None = None
+    currency: str = "USD"
     notes: str | None
     sold_at: datetime
 

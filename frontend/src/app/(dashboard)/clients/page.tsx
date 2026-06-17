@@ -9,6 +9,7 @@ import api from "@/lib/api";
 import { useDebounced } from "@/lib/use-debounced";
 import type { Client, ClientDetail, Artist } from "@/lib/types";
 import { CLIENT_TYPE_LABELS } from "@/lib/types";
+import { formatPrice } from "@/lib/currency";
 
 const TYPES = ["buyer", "dealer", "referral"] as const;
 
@@ -354,7 +355,7 @@ export default function ClientsPage() {
                             {p.artist_name ? `${p.artist_name} — ` : ""}{p.artwork_title || "Без названия"}
                           </Link>
                           <span className="whitespace-nowrap text-gray-500">
-                            {Number(p.sold_price).toLocaleString("ru")} ₽ · {new Date(p.sold_at).toLocaleDateString("ru")}
+                            {formatPrice(p.sold_price, p.currency)} · {new Date(p.sold_at).toLocaleDateString("ru")}
                           </span>
                         </li>
                       ))}

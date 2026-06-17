@@ -10,6 +10,7 @@ import { imageUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { ArtworkListItem, Artist, Technique, Room } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
+import { formatPrice } from "@/lib/currency";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
@@ -347,7 +348,7 @@ function ArtworksContent() {
                   </span>
                   {aw.sale_price && (
                     <span className="text-sm font-semibold text-gray-900">
-                      {aw.sale_price.toLocaleString("ru")} ₽
+                      {formatPrice(aw.sale_price, aw.currency)}
                     </span>
                   )}
                 </div>
