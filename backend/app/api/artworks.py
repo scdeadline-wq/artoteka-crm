@@ -183,6 +183,7 @@ async def list_artworks(
             artist=aw.artist,
             status=aw.status.value,
             sale_price=aw.sale_price,
+            currency=aw.currency,
             primary_image=primary,
             year=aw.year,
             width_cm=float(aw.width_cm) if aw.width_cm is not None else None,
