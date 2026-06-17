@@ -13,6 +13,7 @@ class ImageOut(BaseModel):
     id: int
     url: str
     is_primary: bool
+    is_internal: bool = False
     sort_order: int
 
     model_config = {"from_attributes": True}
@@ -25,6 +26,7 @@ class ArtworkCreate(BaseModel):
     edition: str | None = None
     description: str | None = None
     condition: str | None = None
+    provenance: str | None = None
     style_period: str | None = None
     has_expertise: bool = False
     status: str = "draft"
@@ -50,6 +52,7 @@ class ArtworkUpdate(BaseModel):
     edition: str | None = None
     description: str | None = None
     condition: str | None = None
+    provenance: str | None = None
     style_period: str | None = None
     has_expertise: bool | None = None
     status: str | None = None
@@ -80,6 +83,7 @@ class ArtworkOut(BaseModel):
     edition: str | None
     description: str | None
     condition: str | None
+    provenance: str | None = None
     style_period: str | None = None
     has_expertise: bool
     status: str

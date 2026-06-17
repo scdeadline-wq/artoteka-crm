@@ -47,6 +47,8 @@ export default function ArtworkDetailPage({
   const [showSellModal, setShowSellModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showReserveModal, setShowReserveModal] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfOpts, setPdfOpts] = useState({ provenance: true, purchase: false });
   const [newTech, setNewTech] = useState("");
   const [manualArtist, setManualArtist] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -114,6 +116,7 @@ export default function ArtworkDetailPage({
       edition: artwork.edition || "",
       description: artwork.description || "",
       condition: artwork.condition || "",
+      provenance: artwork.provenance || "",
       style_period: artwork.style_period || "",
       warehouse_id: artwork.warehouse?.id ?? 0,
       rack_id: artwork.rack?.id ?? 0,
@@ -171,6 +174,7 @@ export default function ArtworkDetailPage({
         edition: form.edition || null,
         description: form.description || null,
         condition: form.condition || null,
+        provenance: form.provenance || null,
         style_period: form.style_period || null,
         warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
         rack_id: form.rack_id ? Number(form.rack_id) : null,
@@ -260,10 +264,10 @@ export default function ArtworkDetailPage({
   // === Управление фото (доступно всегда, не только в режиме редактирования) ===
   const uploadImageMutation = useMutation({
     // ВАЖНО: URL обязан кончаться на «/» — иначе FastAPI отвечает 307 и фото грузится дважды
-    mutationFn: (file: File) => {
+    mutationFn: ({ file, internal }: { file: File; internal?: boolean }) => {
       const fd = new FormData();
       fd.append("file", file);
-      return api.post(`/artworks/${id}/images/`, fd);
+      return api.post(`/artworks/${id}/images/`, fd, internal ? { params: { is_internal: true } } : undefined);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["artwork", id] });
@@ -284,6 +288,15 @@ export default function ArtworkDetailPage({
     },
     onError: (e: { response?: { data?: { detail?: string } } }) => {
       setErrMsg(e?.response?.data?.detail || "Не удалось удалить фото");
+    },
+  });
+
+  const setInternalMutation = useMutation({
+    mutationFn: ({ imageId, internal }: { imageId: number; internal: boolean }) =>
+      api.patch(`/artworks/${id}/images/${imageId}/`, null, { params: { is_internal: internal } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
     },
   });
 
@@ -353,22 +366,7 @@ export default function ArtworkDetailPage({
         <div className="flex flex-wrap gap-2">
           {!editing && (
             <button
-              onClick={async () => {
-                try {
-                  const res = await api.get(`/artworks/${id}/pdf/`, { responseType: "blob" });
-                  const url = URL.createObjectURL(res.data as Blob);
-                  // Скачиваем через <a download>: window.open после await режет popup-блокер.
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `artoteka_${artwork.inventory_number}.pdf`;
-                  document.body.appendChild(a);
-                  a.click();
-                  a.remove();
-                  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-                } catch {
-                  alert("Не удалось сформировать PDF");
-                }
-              }}
+              onClick={() => setShowPdfModal(true)}
               className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
               <FileDown size={14} /> PDF
@@ -596,7 +594,11 @@ export default function ArtworkDetailPage({
                   >
                     <X size={14} />
                   </button>
-                  {img.is_primary ? (
+                  {img.is_internal ? (
+                    <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-full bg-gray-700/80 px-2 py-0.5 text-xs text-white" title="Внутреннее фото — не попадает в клиентский PDF">
+                      🔒 Внутр.
+                    </span>
+                  ) : img.is_primary ? (
                     <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-xs text-white">
                       <Star size={10} className="fill-amber-400 text-amber-400" /> Главное
                     </span>
@@ -610,29 +612,50 @@ export default function ArtworkDetailPage({
                       <Star size={10} /> Сделать главным
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setInternalMutation.mutate({ imageId: img.id, internal: !img.is_internal })}
+                    disabled={setInternalMutation.isPending}
+                    title={img.is_internal ? "Показывать в каталоге и клиентском PDF" : "Скрыть из клиентского PDF (внутреннее)"}
+                    className="absolute bottom-1.5 right-1.5 rounded-full bg-black/50 px-2 py-0.5 text-xs text-white hover:bg-black/70 disabled:opacity-50"
+                  >
+                    {img.is_internal ? "→ в PDF" : "скрыть из PDF"}
+                  </button>
                 </div>
               ))}
             </div>
           )}
-          <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
-            {uploadImageMutation.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Plus size={14} />
-            )}
-            {uploadImageMutation.isPending ? "Загружаю фото..." : "Добавить фото"}
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              disabled={uploadImageMutation.isPending}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) uploadImageMutation.mutate(file);
-                e.target.value = "";
-              }}
-            />
-          </label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
+              {uploadImageMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              {uploadImageMutation.isPending ? "Загружаю..." : "Добавить фото"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploadImageMutation.isPending}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadImageMutation.mutate({ file });
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50" title="Сертификат, оборот картины и т.п. — не уходит в клиентский PDF">
+              <Plus size={14} /> Внутр. документ
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploadImageMutation.isPending}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadImageMutation.mutate({ file, internal: true });
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
         </div>
 
         {/* Поля */}
@@ -732,6 +755,10 @@ export default function ArtworkDetailPage({
             <div className="col-span-full">
               <label className="mb-1 block text-xs text-gray-500">Описание</label>
               <textarea value={form.description as string} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="w-full rounded border px-2 py-1.5 text-sm" />
+            </div>
+            <div className="col-span-full">
+              <label className="mb-1 block text-xs text-gray-500">Провенанс (биография работы: коллекции, выставки, каталоги)</label>
+              <textarea value={form.provenance as string} onChange={(e) => setForm({ ...form, provenance: e.target.value })} rows={3} className="w-full rounded border px-2 py-1.5 text-sm" placeholder="Из собрания…; участвовала в выставке…; упоминается в каталоге…" />
             </div>
             <div className="col-span-full">
               <label className="mb-2 block text-xs text-gray-500">Техника</label>
@@ -880,12 +907,66 @@ export default function ArtworkDetailPage({
             <p className="text-sm leading-relaxed text-gray-700">{artwork.description}</p>
           </div>
         )}
+        {!editing && artwork.provenance && (
+          <div className="mt-4 border-t pt-4">
+            <p className="mb-1 text-sm text-gray-500">Провенанс</p>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700">{artwork.provenance}</p>
+          </div>
+        )}
       </div>
 
       {/* Мокапы скрыты до появления рабочей image-модели (gpt-5-image / gemini блокируют RU IP).
           Компонент ArtworkMockup и стр. /mockup в коде остались — раскомментировать здесь и в sidebar.tsx, когда вернём. */}
 
       {/* Модалка подтверждения удаления */}
+      {showPdfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-3 text-lg font-bold text-gray-900">PDF для клиента</h2>
+            <p className="mb-3 text-xs text-gray-500">Что включить в выгружаемый файл. Лого и водяной знак настраиваются в «Настройках».</p>
+            <label className="mb-2 flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={pdfOpts.provenance} onChange={(e) => setPdfOpts({ ...pdfOpts, provenance: e.target.checked })} />
+              Включить провенанс (биографию работы)
+            </label>
+            {isAdmin && (
+              <label className="mb-2 flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={pdfOpts.purchase} onChange={(e) => setPdfOpts({ ...pdfOpts, purchase: e.target.checked })} />
+                Включить закупочную цену (обычно НЕ для клиента)
+              </label>
+            )}
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await api.get(`/artworks/${id}/pdf/`, {
+                      responseType: "blob",
+                      params: { include_provenance: pdfOpts.provenance, include_purchase_price: pdfOpts.purchase },
+                    });
+                    const url = URL.createObjectURL(res.data as Blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `artoteka_${artwork.inventory_number}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                    setShowPdfModal(false);
+                  } catch {
+                    alert("Не удалось сформировать PDF");
+                  }
+                }}
+                className="flex-1 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+              >
+                Скачать PDF
+              </button>
+              <button onClick={() => setShowPdfModal(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">

@@ -12,7 +12,7 @@ from app.sorting import surname_expr
 from app.auth import get_current_user, is_admin, require_admin
 from app.currency import normalize_currency
 from app.models import Artwork, ArtworkStatus, Artist, Technique, Image, Sale, User
-from app.services.settings import get_default_currency
+from app.services.settings import get_default_currency, get_all_settings
 from app.schemas.artwork import ArtworkCreate, ArtworkUpdate, ArtworkOut, ArtworkListOut
 from fastapi.responses import Response as FastAPIResponse
 from app.services.storage import upload_image, get_image_bytes, delete_object
@@ -491,10 +491,13 @@ def _parse_year(year_str: str | None) -> int | None:
 @router.get("/{artwork_id}/pdf/")
 async def artwork_pdf(
     artwork_id: int,
+    include_provenance: bool = True,
+    include_purchase_price: bool | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """PDF-карточка работы. Закупочная цена — только для admin."""
+    """PDF-карточка работы для клиента. Тумблеры (провенанс, закупочная цена),
+    лого и водяной знак берутся из настроек. Закупочная цена — только admin."""
     stmt = (
         select(Artwork)
         .options(
@@ -512,8 +515,24 @@ async def artwork_pdf(
     if not artwork:
         raise HTTPException(status_code=404, detail="Artwork not found")
 
+    # Закупочную цену показываем только админам и только если явно попросили (по умолчанию — да для admin)
+    show_purchase = is_admin(user) and (include_purchase_price is not False)
+
+    cfg = await get_all_settings(db)
+    watermark = None
+    if (cfg.get("pdf_watermark_enabled") or "").lower() == "true":
+        watermark = cfg.get("pdf_watermark_text") or cfg.get("gallery_name") or "Артотека"
+
     # weasyprint — синхронный и тяжёлый, не блокируем event loop
-    pdf_bytes = await asyncio.to_thread(render_artwork_pdf, artwork, include_purchase_price=is_admin(user))
+    pdf_bytes = await asyncio.to_thread(
+        render_artwork_pdf,
+        artwork,
+        include_purchase_price=show_purchase,
+        include_provenance=include_provenance,
+        gallery_name=cfg.get("gallery_name") or "Артотека",
+        logo_url=cfg.get("pdf_logo_url") or None,
+        watermark_text=watermark,
+    )
     inv = artwork.inventory_number
     return FastAPIResponse(
         content=pdf_bytes,
@@ -546,6 +565,7 @@ async def upload_artwork_image(
     artwork_id: int,
     file: UploadFile = File(...),
     is_primary: bool = False,
+    is_internal: bool = False,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -554,11 +574,12 @@ async def upload_artwork_image(
         raise HTTPException(status_code=404, detail="Artwork not found")
 
     url = await upload_image(file, artwork_id)
-    image = Image(artwork_id=artwork_id, url=url, is_primary=is_primary)
+    # Внутреннее фото (сертификат, оборот) не может быть главным
+    image = Image(artwork_id=artwork_id, url=url, is_primary=is_primary and not is_internal, is_internal=is_internal)
     db.add(image)
     await db.commit()
     await db.refresh(image)
-    return {"id": image.id, "url": image.url}
+    return {"id": image.id, "url": image.url, "is_internal": image.is_internal}
 
 
 @router.delete("/{artwork_id}/images/{image_id}/", status_code=204)
@@ -604,23 +625,31 @@ async def delete_artwork_image(
 async def update_artwork_image(
     artwork_id: int,
     image_id: int,
-    is_primary: bool = Query(...),
+    is_primary: bool | None = Query(None),
+    is_internal: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Сделать фото главным (is_primary=true) — снимает primary с остальных."""
+    """Сделать фото главным (is_primary=true, снимает primary с остальных) и/или
+    пометить как внутреннее (is_internal — не попадает в клиентский PDF)."""
     stmt = select(Image).where(Image.id == image_id, Image.artwork_id == artwork_id)
     image = (await db.execute(stmt)).scalar_one_or_none()
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    if is_primary:
+    if is_internal is not None:
+        image.is_internal = is_internal
+        if is_internal:
+            image.is_primary = False  # внутреннее фото не может быть главным
+    if is_primary is not None and is_primary and not image.is_internal:
         others_stmt = select(Image).where(Image.artwork_id == artwork_id, Image.id != image_id)
         for other in (await db.execute(others_stmt)).scalars().all():
             other.is_primary = False
-    image.is_primary = is_primary
+        image.is_primary = True
+    elif is_primary is False:
+        image.is_primary = False
     await db.commit()
-    return {"id": image.id, "url": image.url, "is_primary": image.is_primary}
+    return {"id": image.id, "url": image.url, "is_primary": image.is_primary, "is_internal": image.is_internal}
 
 
 @router.post("/enhance-image/")

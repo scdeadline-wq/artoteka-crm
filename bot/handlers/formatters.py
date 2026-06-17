@@ -107,6 +107,12 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
     ]
     if style:
         lines.append(f"Стиль: {escape(str(style))}")
+    provenance = a.get("provenance")
+    if provenance:
+        prov = str(provenance)
+        if len(prov) > 200:
+            prov = prov[:200] + "…"
+        lines.append(f"Провенанс: {escape(prov)}")
     lines += [
         f"Размер: {size}",
         f"Цена: {sale_price}",

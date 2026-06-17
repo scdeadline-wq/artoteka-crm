@@ -16,6 +16,7 @@ export interface ImageData {
   id: number;
   url: string;
   is_primary: boolean;
+  is_internal: boolean;
   sort_order: number;
 }
 
@@ -42,6 +43,7 @@ export interface Artwork {
   edition: string | null;
   description: string | null;
   condition: string | null;
+  provenance: string | null;
   style_period: string | null;
   has_expertise: boolean;
   status: string;

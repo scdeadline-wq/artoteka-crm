@@ -42,6 +42,7 @@ class Artwork(Base):
     edition: Mapped[str | None] = mapped_column(String(100), default=None)
     description: Mapped[str | None] = mapped_column(Text, default=None)
     condition: Mapped[str | None] = mapped_column(Text, default=None)
+    provenance: Mapped[str | None] = mapped_column(Text, default=None)  # биография работы: коллекции, выставки, каталоги
     style_period: Mapped[str | None] = mapped_column(Text, default=None)
     has_expertise: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[ArtworkStatus] = mapped_column(Enum(ArtworkStatus), default=ArtworkStatus.draft, index=True)
@@ -82,6 +83,7 @@ class Image(Base):
     artwork_id: Mapped[int] = mapped_column(ForeignKey("artworks.id", ondelete="CASCADE"))
     url: Mapped[str] = mapped_column(String(500))
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_internal: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # внутреннее фото (сертификат, оборот) — не в клиентский PDF
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
