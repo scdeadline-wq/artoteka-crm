@@ -6,7 +6,7 @@ import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Plus, Search, Trash2 } from "lucide-react";
 import api from "@/lib/api";
-import { imageUrl } from "@/lib/image";
+import { thumbUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { ArtworkListItem, Artist, Technique, Room, StorageOption } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
@@ -342,8 +342,9 @@ function ArtworksContent() {
               <div className="aspect-[4/3] bg-gray-100">
                 {aw.primary_image ? (
                   <img
-                    src={imageUrl(aw.primary_image)}
+                    src={thumbUrl(aw.primary_image, 400)}
                     alt={aw.title || ""}
+                    loading="lazy"
                     className="h-full w-full object-cover"
                   />
                 ) : (

@@ -1,10 +1,12 @@
+import asyncio
+
 from botocore.exceptions import ClientError
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from app.api import artworks, artists, techniques, auth, clients, sales, dashboard, import_airtable, rooms, users, settings as settings_api, storage
-from app.services.storage import get_image_bytes
+from app.services.storage import get_image_bytes, get_or_make_thumbnail
 
 app = FastAPI(
     title="Артотека",
@@ -40,10 +42,15 @@ async def health():
 
 
 @app.get("/images/{path:path}")
-async def serve_image(path: str):
-    """Proxy images from MinIO storage."""
+async def serve_image(path: str, w: int | None = None):
+    """Proxy images from MinIO storage. ?w=<px> — отдать уменьшенное превью
+    (для каталога: в разы меньше байт). Тяжёлые операции — в отдельном потоке,
+    чтобы не блокировать event loop единственного воркера."""
     try:
-        data, content_type = get_image_bytes(path)
+        if w:
+            data, content_type = await asyncio.to_thread(get_or_make_thumbnail, path, w)
+        else:
+            data, content_type = await asyncio.to_thread(get_image_bytes, path)
     except ClientError as e:
         code = e.response.get("Error", {}).get("Code")
         if code in ("NoSuchKey", "404", "NoSuchBucket"):

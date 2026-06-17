@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
-import { imageUrl } from "@/lib/image";
+import { thumbUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { Artwork, Artist, Technique, Client, Room, Sale, StorageOption } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
@@ -630,8 +630,9 @@ export default function ArtworkDetailPage({
               {artwork.images.map((img) => (
                 <div key={img.id} className="group relative shrink-0">
                   <img
-                    src={imageUrl(img.url)}
+                    src={thumbUrl(img.url, 600)}
                     alt=""
+                    loading="lazy"
                     className="h-56 rounded-lg object-cover"
                   />
                   <button
