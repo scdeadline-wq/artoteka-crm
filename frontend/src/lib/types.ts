@@ -110,6 +110,20 @@ export interface ClientDetail extends Client {
   purchases: ClientPurchase[];
 }
 
+// Работа в подборке клиента: status = shortlist (⭐) | sent (📤 отправлено на просмотр)
+export interface SelectionItem {
+  artwork_id: number;
+  inventory_number: number;
+  artwork_title: string | null;
+  artist_name: string | null;
+  primary_image: string | null;
+  status: string;
+  note: string | null;
+  sale_price: number | null;
+  currency: string;
+  artwork_status: string;
+}
+
 export interface Sale {
   id: number;
   artwork_id: number;

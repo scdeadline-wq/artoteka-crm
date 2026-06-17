@@ -6,11 +6,34 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.auth import get_current_user
 from app.models import Client, Artist, User, Sale, Artwork
+from app.models.selection import ClientSelection, SELECTION_STATUSES
 from app.schemas.client import (
     ClientCreate, ClientUpdate, ClientOut, ClientDetailOut, ClientPurchase,
+    SelectionItem, SelectionCreate, SelectionUpdate,
 )
 
 router = APIRouter()
+
+
+def _primary_image(artwork: Artwork) -> str | None:
+    imgs = sorted(artwork.images or [], key=lambda i: (not i.is_primary, i.sort_order))
+    return imgs[0].url if imgs else None
+
+
+def _selection_to_item(sel: ClientSelection) -> SelectionItem:
+    a = sel.artwork
+    return SelectionItem(
+        artwork_id=sel.artwork_id,
+        inventory_number=a.inventory_number,
+        artwork_title=a.title,
+        artist_name=a.artist.name_ru if a.artist else None,
+        primary_image=_primary_image(a),
+        status=sel.status,
+        note=sel.note,
+        sale_price=a.sale_price,
+        currency=a.currency or "USD",
+        artwork_status=a.status.value if hasattr(a.status, "value") else str(a.status),
+    )
 
 
 @router.get("/", response_model=list[ClientOut])
@@ -143,3 +166,125 @@ async def delete_client(
     await db.delete(client)
     await db.commit()
     return {"ok": True, "id": client_id}
+
+
+# ── Подборка работ под клиента (shortlist / отправлено на просмотр) ───────────
+
+def _check_selection_status(status: str) -> None:
+    if status not in SELECTION_STATUSES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Недопустимый статус «{status}». Допустимые: {', '.join(SELECTION_STATUSES)}",
+        )
+
+
+def _selection_query(client_id: int):
+    return (
+        select(ClientSelection)
+        .options(
+            selectinload(ClientSelection.artwork).selectinload(Artwork.artist),
+            selectinload(ClientSelection.artwork).selectinload(Artwork.images),
+        )
+        .where(ClientSelection.client_id == client_id)
+        .order_by(ClientSelection.created_at.desc())
+    )
+
+
+@router.get("/{client_id}/selection/", response_model=list[SelectionItem])
+async def list_selection(
+    client_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    sels = (await db.execute(_selection_query(client_id))).scalars().all()
+    # Работа могла быть удалена → soft-delete фильтр уберёт artwork; пропускаем такие
+    return [_selection_to_item(s) for s in sels if s.artwork]
+
+
+@router.post("/{client_id}/selection/", response_model=SelectionItem, status_code=201)
+async def add_to_selection(
+    client_id: int,
+    body: SelectionCreate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    _check_selection_status(body.status)
+    if not await db.get(Client, client_id):
+        raise HTTPException(status_code=404, detail="Client not found")
+    if not await db.get(Artwork, body.artwork_id):
+        raise HTTPException(status_code=400, detail="Artwork not found")
+
+    existing = (await db.execute(
+        select(ClientSelection).where(
+            ClientSelection.client_id == client_id,
+            ClientSelection.artwork_id == body.artwork_id,
+        )
+    )).scalar_one_or_none()
+    if existing:
+        existing.status = body.status
+        if body.note is not None:
+            existing.note = body.note
+        sel_id = existing.id
+    else:
+        sel = ClientSelection(
+            client_id=client_id, artwork_id=body.artwork_id,
+            status=body.status, note=body.note,
+        )
+        db.add(sel)
+        await db.flush()
+        sel_id = sel.id
+    await db.commit()
+
+    sel = (await db.execute(
+        _selection_query(client_id).where(ClientSelection.id == sel_id)
+    )).scalar_one()
+    return _selection_to_item(sel)
+
+
+@router.patch("/{client_id}/selection/{artwork_id}/", response_model=SelectionItem)
+async def update_selection(
+    client_id: int,
+    artwork_id: int,
+    body: SelectionUpdate,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    sel = (await db.execute(
+        select(ClientSelection).where(
+            ClientSelection.client_id == client_id,
+            ClientSelection.artwork_id == artwork_id,
+        )
+    )).scalar_one_or_none()
+    if not sel:
+        raise HTTPException(status_code=404, detail="Not in selection")
+    data = body.model_dump(exclude_unset=True)
+    if data.get("status") is not None:
+        _check_selection_status(data["status"])
+        sel.status = data["status"]
+    if "note" in data:
+        sel.note = data["note"]
+    await db.commit()
+
+    sel = (await db.execute(
+        _selection_query(client_id).where(ClientSelection.id == sel.id)
+    )).scalar_one()
+    return _selection_to_item(sel)
+
+
+@router.delete("/{client_id}/selection/{artwork_id}/", status_code=200)
+async def remove_from_selection(
+    client_id: int,
+    artwork_id: int,
+    db: AsyncSession = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    sel = (await db.execute(
+        select(ClientSelection).where(
+            ClientSelection.client_id == client_id,
+            ClientSelection.artwork_id == artwork_id,
+        )
+    )).scalar_one_or_none()
+    if sel:
+        await db.delete(sel)
+        await db.commit()
+    return {"ok": True}

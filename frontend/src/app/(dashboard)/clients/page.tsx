@@ -10,6 +10,7 @@ import { useDebounced } from "@/lib/use-debounced";
 import type { Client, ClientDetail, Artist } from "@/lib/types";
 import { CLIENT_TYPE_LABELS } from "@/lib/types";
 import { formatPrice } from "@/lib/currency";
+import ClientSelectionBlock from "@/components/client-selection";
 
 const TYPES = ["buyer", "dealer", "referral"] as const;
 
@@ -361,6 +362,10 @@ export default function ClientsPage() {
                       ))}
                     </ul>
                   )}
+                </div>
+
+                <div className="mt-4 border-t pt-3">
+                  <ClientSelectionBlock clientId={viewClient.id} />
                 </div>
 
                 <div className="mt-5 flex gap-2">

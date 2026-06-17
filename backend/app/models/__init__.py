@@ -9,6 +9,7 @@ from app.models.sale import Sale
 from app.models.mockup import Mockup
 from app.models.setting import AppSetting
 from app.models.storage import StorageOption
+from app.models.selection import ClientSelection
 
 __all__ = [
     "User", "UserRole",
@@ -22,4 +23,5 @@ __all__ = [
     "Mockup",
     "AppSetting",
     "StorageOption",
+    "ClientSelection",
 ]
