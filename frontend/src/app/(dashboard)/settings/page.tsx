@@ -104,7 +104,12 @@ export default function SettingsPage() {
           <label className="mb-1 block text-xs text-gray-500">Логотип галереи</label>
           {form.pdf_logo_url && (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={imageUrl(form.pdf_logo_url)} alt="логотип" className="mb-2 max-h-16 rounded border bg-white p-1" />
+            <img
+              src={imageUrl(form.pdf_logo_url)}
+              alt="логотип"
+              className="mb-2 max-h-16 rounded border bg-white p-1"
+              onError={(e) => { e.currentTarget.style.display = "none"; }}
+            />
           )}
           <div className="flex items-center gap-2">
             <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
