@@ -64,6 +64,10 @@ export interface Artwork {
   reserved_client_id: number | null;
   reserved_until: string | null;
   reserve_note: string | null;
+  // Выставка с точными сроками (статус on_exhibition)
+  exhibition_from: string | null;
+  exhibition_to: string | null;
+  exhibition_place: string | null;
   techniques: Technique[];
   images: ImageData[];
   created_at: string;

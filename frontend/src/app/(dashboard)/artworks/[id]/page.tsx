@@ -47,6 +47,7 @@ export default function ArtworkDetailPage({
   const [showSellModal, setShowSellModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showReserveModal, setShowReserveModal] = useState(false);
+  const [showExhModal, setShowExhModal] = useState(false);
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfOpts, setPdfOpts] = useState({ provenance: true, purchase: false });
   const [newTech, setNewTech] = useState("");
@@ -244,6 +245,27 @@ export default function ArtworkDetailPage({
     },
     onError: (e: { response?: { data?: { detail?: string } } }) => {
       setErrMsg(e?.response?.data?.detail || "Не удалось оформить резерв");
+    },
+  });
+
+  // Выставка: статус on_exhibition + сроки/площадка одним PUT
+  const [exhForm, setExhForm] = useState({ from: "", to: "", place: "" });
+  const exhibitionMutation = useMutation({
+    mutationFn: () =>
+      api.put(`/artworks/${id}`, {
+        status: "on_exhibition",
+        exhibition_from: exhForm.from || null,
+        exhibition_to: exhForm.to || null,
+        exhibition_place: exhForm.place.trim() || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      setShowExhModal(false);
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось отправить на выставку");
     },
   });
 
@@ -536,6 +558,16 @@ export default function ArtworkDetailPage({
                         setShowReserveModal(true);
                         return;
                       }
+                      // Перевод на выставку — через модалку (сроки / площадка)
+                      if (s === "on_exhibition") {
+                        setExhForm({
+                          from: artwork.exhibition_from ?? "",
+                          to: artwork.exhibition_to ?? "",
+                          place: artwork.exhibition_place ?? "",
+                        });
+                        setShowExhModal(true);
+                        return;
+                      }
                       statusMutation.mutate(s);
                     }}
                     className="rounded border px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100"
@@ -566,6 +598,27 @@ export default function ArtworkDetailPage({
             </p>
             {artwork.reserve_note && (
               <p className="mt-1 text-blue-800">{artwork.reserve_note}</p>
+            )}
+          </div>
+        )}
+
+        {/* Инфо о выставке: сроки, площадка */}
+        {artwork.status === "on_exhibition" &&
+          (artwork.exhibition_from || artwork.exhibition_to || artwork.exhibition_place) && (
+          <div className="mb-4 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900">
+            <p className="font-medium">
+              На выставке
+              {(artwork.exhibition_from || artwork.exhibition_to) && (
+                <>
+                  {" · "}
+                  {artwork.exhibition_from ? new Date(artwork.exhibition_from).toLocaleDateString("ru") : "…"}
+                  {" – "}
+                  {artwork.exhibition_to ? new Date(artwork.exhibition_to).toLocaleDateString("ru") : "…"}
+                </>
+              )}
+            </p>
+            {artwork.exhibition_place && (
+              <p className="mt-1 text-teal-800">{artwork.exhibition_place}</p>
             )}
           </div>
         )}
@@ -1050,6 +1103,55 @@ export default function ArtworkDetailPage({
               </button>
               <button
                 onClick={() => setShowReserveModal(false)}
+                className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Модалка выставки */}
+      {showExhModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-lg font-bold text-gray-900">Отправить на выставку</h2>
+            <p className="mb-4 text-sm text-gray-500">
+              {artwork.title || "Без названия"} — {artwork.artist.name_ru}
+            </p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">С</label>
+                  <input type="date" value={exhForm.from} onChange={(e) => setExhForm({ ...exhForm, from: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">По</label>
+                  <input type="date" value={exhForm.to} onChange={(e) => setExhForm({ ...exhForm, to: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Площадка / заметка</label>
+                <textarea
+                  value={exhForm.place}
+                  onChange={(e) => setExhForm({ ...exhForm, place: e.target.value })}
+                  rows={2}
+                  placeholder="напр. Галерея X, групповая выставка «Лето»"
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => exhibitionMutation.mutate()}
+                disabled={exhibitionMutation.isPending}
+                className="flex-1 rounded-lg bg-teal-600 py-2 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50"
+              >
+                {exhibitionMutation.isPending ? "Сохраняю..." : "На выставку"}
+              </button>
+              <button
+                onClick={() => setShowExhModal(false)}
                 className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
               >
                 Отмена

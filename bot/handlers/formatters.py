@@ -132,6 +132,14 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
     if tags:
         lines.append("Теги: " + " ".join(f"#{escape(str(t))}" for t in tags))
     lines.append(f"Статус: {STATUS_LABEL.get(status, status)}")
+    if status == "on_exhibition":
+        ex_from = a.get("exhibition_from")
+        ex_to = a.get("exhibition_to")
+        ex_place = a.get("exhibition_place")
+        if ex_from or ex_to:
+            lines.append(f"Сроки: {ex_from or '…'} – {ex_to or '…'}")
+        if ex_place:
+            lines.append(f"Площадка: {escape(str(ex_place))}")
     return "\n".join(lines)
 
 

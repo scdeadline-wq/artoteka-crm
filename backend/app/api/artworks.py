@@ -60,6 +60,12 @@ def _clear_reserve_fields(artwork: Artwork) -> None:
     artwork.reserve_note = None
 
 
+def _clear_exhibition_fields(artwork: Artwork) -> None:
+    artwork.exhibition_from = None
+    artwork.exhibition_to = None
+    artwork.exhibition_place = None
+
+
 @router.get("/", response_model=list[ArtworkListOut])
 async def list_artworks(
     status: str | None = None,
@@ -351,6 +357,16 @@ async def update_artwork(
         data["reserved_until"] = None
         data["reserve_note"] = None
 
+    # Снимаем данные выставки при смене статуса с on_exhibition на любой другой
+    if (
+        "status" in data
+        and artwork.status == ArtworkStatus.on_exhibition
+        and data["status"] != ArtworkStatus.on_exhibition
+    ):
+        data["exhibition_from"] = None
+        data["exhibition_to"] = None
+        data["exhibition_place"] = None
+
     for key, value in data.items():
         setattr(artwork, key, value)
 
@@ -555,6 +571,8 @@ async def change_status(
     # Снимаем резерв при смене статуса с reserved на любой другой
     if artwork.status == ArtworkStatus.reserved and new_status != ArtworkStatus.reserved:
         _clear_reserve_fields(artwork)
+    if artwork.status == ArtworkStatus.on_exhibition and new_status != ArtworkStatus.on_exhibition:
+        _clear_exhibition_fields(artwork)
     artwork.status = new_status
     await db.commit()
     return {"ok": True, "status": status}

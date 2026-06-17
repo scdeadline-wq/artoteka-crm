@@ -61,6 +61,10 @@ class Artwork(Base):
     reserved_client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), default=None)
     reserved_until: Mapped[date | None] = mapped_column(Date, default=None)
     reserve_note: Mapped[str | None] = mapped_column(String(500), default=None)
+    # Выставка с точными сроками (статус on_exhibition) — по аналогии с резервом
+    exhibition_from: Mapped[date | None] = mapped_column(Date, default=None)
+    exhibition_to: Mapped[date | None] = mapped_column(Date, default=None)
+    exhibition_place: Mapped[str | None] = mapped_column(String(500), default=None)
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

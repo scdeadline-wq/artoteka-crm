@@ -72,6 +72,9 @@ class ArtworkUpdate(BaseModel):
     reserved_client_id: int | None = None
     reserved_until: date | None = None
     reserve_note: str | None = None
+    exhibition_from: date | None = None
+    exhibition_to: date | None = None
+    exhibition_place: str | None = None
 
 
 class ArtworkOut(BaseModel):
@@ -102,6 +105,9 @@ class ArtworkOut(BaseModel):
     reserved_client_id: int | None = None
     reserved_until: date | None = None
     reserve_note: str | None = None
+    exhibition_from: date | None = None
+    exhibition_to: date | None = None
+    exhibition_place: str | None = None
     deleted_at: datetime | None = None
     techniques: list[TechniqueOut]
     images: list[ImageOut]
