@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tansta
 import { Star, Send, Trash2, Plus, Search, X } from "lucide-react";
 import Link from "next/link";
 import api from "@/lib/api";
-import { imageUrl } from "@/lib/image";
+import { thumbUrl } from "@/lib/image";
 import { useDebounced } from "@/lib/use-debounced";
 import { formatPrice } from "@/lib/currency";
 import type { SelectionItem, ArtworkListItem } from "@/lib/types";
@@ -79,7 +79,7 @@ export default function ClientSelectionBlock({ clientId }: { clientId: number })
                 <li key={a.id} className="flex items-center gap-2 rounded px-1 py-1 hover:bg-white">
                   {a.primary_image ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={imageUrl(a.primary_image)} alt="" className="h-8 w-8 rounded object-cover" />
+                    <img src={thumbUrl(a.primary_image, 100)} alt="" loading="lazy" className="h-8 w-8 rounded object-cover" />
                   ) : (
                     <div className="h-8 w-8 rounded bg-gray-200" />
                   )}
@@ -109,7 +109,7 @@ export default function ClientSelectionBlock({ clientId }: { clientId: number })
             <li key={it.artwork_id} className="flex items-center gap-2 text-sm">
               {it.primary_image ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={imageUrl(it.primary_image)} alt="" className="h-9 w-9 rounded object-cover" />
+                <img src={thumbUrl(it.primary_image, 100)} alt="" loading="lazy" className="h-9 w-9 rounded object-cover" />
               ) : (
                 <div className="h-9 w-9 rounded bg-gray-200" />
               )}
