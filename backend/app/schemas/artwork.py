@@ -6,12 +6,14 @@ from pydantic import BaseModel
 from app.schemas.artist import ArtistOut
 from app.schemas.technique import TechniqueOut
 from app.schemas.room import RoomOut
+from app.schemas.storage import StorageOptionOut
 
 
 class ImageOut(BaseModel):
     id: int
     url: str
     is_primary: bool
+    is_internal: bool = False
     sort_order: int
 
     model_config = {"from_attributes": True}
@@ -24,16 +26,18 @@ class ArtworkCreate(BaseModel):
     edition: str | None = None
     description: str | None = None
     condition: str | None = None
+    provenance: str | None = None
     style_period: str | None = None
     has_expertise: bool = False
     status: str = "draft"
-    location: str | None = None
-    rack: str | None = None
-    shelf: str | None = None
+    warehouse_id: int | None = None
+    rack_id: int | None = None
+    shelf_id: int | None = None
     width_cm: float | None = None
     height_cm: float | None = None
     purchase_price: Decimal | None = None
     sale_price: Decimal | None = None
+    currency: str | None = None  # None → берём дефолтную из настроек
     notes: str | None = None
     room_id: int | None = None
     is_framed: bool = False
@@ -48,16 +52,18 @@ class ArtworkUpdate(BaseModel):
     edition: str | None = None
     description: str | None = None
     condition: str | None = None
+    provenance: str | None = None
     style_period: str | None = None
     has_expertise: bool | None = None
     status: str | None = None
-    location: str | None = None
-    rack: str | None = None
-    shelf: str | None = None
+    warehouse_id: int | None = None
+    rack_id: int | None = None
+    shelf_id: int | None = None
     width_cm: float | None = None
     height_cm: float | None = None
     purchase_price: Decimal | None = None
     sale_price: Decimal | None = None
+    currency: str | None = None
     notes: str | None = None
     room_id: int | None = None
     is_framed: bool | None = None
@@ -66,6 +72,9 @@ class ArtworkUpdate(BaseModel):
     reserved_client_id: int | None = None
     reserved_until: date | None = None
     reserve_note: str | None = None
+    exhibition_from: date | None = None
+    exhibition_to: date | None = None
+    exhibition_place: str | None = None
 
 
 class ArtworkOut(BaseModel):
@@ -77,16 +86,18 @@ class ArtworkOut(BaseModel):
     edition: str | None
     description: str | None
     condition: str | None
+    provenance: str | None = None
     style_period: str | None = None
     has_expertise: bool
     status: str
-    location: str | None
-    rack: str | None = None
-    shelf: str | None = None
+    warehouse: StorageOptionOut | None = None
+    rack: StorageOptionOut | None = None
+    shelf: StorageOptionOut | None = None
     width_cm: float | None
     height_cm: float | None
     purchase_price: Decimal | None = None
     sale_price: Decimal | None
+    currency: str = "USD"
     notes: str | None
     room: RoomOut | None = None
     is_framed: bool
@@ -94,6 +105,9 @@ class ArtworkOut(BaseModel):
     reserved_client_id: int | None = None
     reserved_until: date | None = None
     reserve_note: str | None = None
+    exhibition_from: date | None = None
+    exhibition_to: date | None = None
+    exhibition_place: str | None = None
     deleted_at: datetime | None = None
     techniques: list[TechniqueOut]
     images: list[ImageOut]
@@ -110,6 +124,7 @@ class ArtworkListOut(BaseModel):
     artist: ArtistOut
     status: str
     sale_price: Decimal | None
+    currency: str = "USD"
     primary_image: str | None = None
     year: int | None
     width_cm: float | None = None

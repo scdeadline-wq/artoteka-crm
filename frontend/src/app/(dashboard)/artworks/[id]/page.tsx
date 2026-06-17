@@ -10,8 +10,9 @@ import Link from "next/link";
 import api from "@/lib/api";
 import { imageUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
-import type { Artwork, Artist, Technique, Client, Room, Sale } from "@/lib/types";
+import type { Artwork, Artist, Technique, Client, Room, Sale, StorageOption } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
+import { formatPrice, SUPPORTED_CURRENCIES } from "@/lib/currency";
 // import ArtworkMockup from "@/components/mockup";  // скрыто, image-модель недоступна
 
 const STATUS_COLORS: Record<string, string> = {
@@ -46,6 +47,9 @@ export default function ArtworkDetailPage({
   const [showSellModal, setShowSellModal] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showReserveModal, setShowReserveModal] = useState(false);
+  const [showExhModal, setShowExhModal] = useState(false);
+  const [showPdfModal, setShowPdfModal] = useState(false);
+  const [pdfOpts, setPdfOpts] = useState({ provenance: true, purchase: false });
   const [newTech, setNewTech] = useState("");
   const [manualArtist, setManualArtist] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -74,6 +78,12 @@ export default function ArtworkDetailPage({
     queryFn: () => api.get("/rooms/").then((r) => r.data),
     enabled: editing,
   });
+  const { data: storage = [] } = useQuery<StorageOption[]>({
+    queryKey: ["storage"],
+    queryFn: () => api.get("/storage/").then((r) => r.data),
+    enabled: editing,
+  });
+  const storageBy = (kind: string) => storage.filter((s) => s.kind === kind);
 
   const { data: clients = [] } = useQuery<Client[]>({
     queryKey: ["clients"],
@@ -107,14 +117,16 @@ export default function ArtworkDetailPage({
       edition: artwork.edition || "",
       description: artwork.description || "",
       condition: artwork.condition || "",
+      provenance: artwork.provenance || "",
       style_period: artwork.style_period || "",
-      location: artwork.location || "",
-      rack: artwork.rack || "",
-      shelf: artwork.shelf || "",
+      warehouse_id: artwork.warehouse?.id ?? 0,
+      rack_id: artwork.rack?.id ?? 0,
+      shelf_id: artwork.shelf?.id ?? 0,
       width_cm: artwork.width_cm || "",
       height_cm: artwork.height_cm || "",
       purchase_price: artwork.purchase_price || "",
       sale_price: artwork.sale_price || "",
+      currency: artwork.currency || "USD",
       room_id: artwork.room?.id ?? 0,
       is_framed: !!artwork.is_framed,
       tags: (artwork.tags || []).join(", "),  // сырая строка — иначе запятая «съедается» при вводе
@@ -158,14 +170,16 @@ export default function ArtworkDetailPage({
         width_cm: form.width_cm ? Number(form.width_cm) : null,
         height_cm: form.height_cm ? Number(form.height_cm) : null,
         sale_price: form.sale_price ? Number(form.sale_price) : null,
+        currency: (form.currency as string) || undefined,
         title: form.title || null,
         edition: form.edition || null,
         description: form.description || null,
         condition: form.condition || null,
+        provenance: form.provenance || null,
         style_period: form.style_period || null,
-        location: form.location || null,
-        rack: form.rack || null,
-        shelf: form.shelf || null,
+        warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
+        rack_id: form.rack_id ? Number(form.rack_id) : null,
+        shelf_id: form.shelf_id ? Number(form.shelf_id) : null,
         room_id: form.room_id ? Number(form.room_id) : null,
         is_framed: !!form.is_framed,
         tags: tagsRaw.split(",").map((t) => t.trim().replace(/^#/, "")).filter(Boolean),
@@ -234,6 +248,27 @@ export default function ArtworkDetailPage({
     },
   });
 
+  // Выставка: статус on_exhibition + сроки/площадка одним PUT
+  const [exhForm, setExhForm] = useState({ from: "", to: "", place: "" });
+  const exhibitionMutation = useMutation({
+    mutationFn: () =>
+      api.put(`/artworks/${id}`, {
+        status: "on_exhibition",
+        exhibition_from: exhForm.from || null,
+        exhibition_to: exhForm.to || null,
+        exhibition_place: exhForm.place.trim() || null,
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+      setShowExhModal(false);
+      setErrMsg(null);
+    },
+    onError: (e: { response?: { data?: { detail?: string } } }) => {
+      setErrMsg(e?.response?.data?.detail || "Не удалось отправить на выставку");
+    },
+  });
+
   // Отмена продажи: продажа удаляется, работа возвращается в статус «В продаже»
   const cancelSaleMutation = useMutation({
     mutationFn: (saleId: number) => api.delete(`/sales/${saleId}`),
@@ -251,10 +286,10 @@ export default function ArtworkDetailPage({
   // === Управление фото (доступно всегда, не только в режиме редактирования) ===
   const uploadImageMutation = useMutation({
     // ВАЖНО: URL обязан кончаться на «/» — иначе FastAPI отвечает 307 и фото грузится дважды
-    mutationFn: (file: File) => {
+    mutationFn: ({ file, internal }: { file: File; internal?: boolean }) => {
       const fd = new FormData();
       fd.append("file", file);
-      return api.post(`/artworks/${id}/images/`, fd);
+      return api.post(`/artworks/${id}/images/`, fd, internal ? { params: { is_internal: true } } : undefined);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["artwork", id] });
@@ -278,6 +313,15 @@ export default function ArtworkDetailPage({
     },
   });
 
+  const setInternalMutation = useMutation({
+    mutationFn: ({ imageId, internal }: { imageId: number; internal: boolean }) =>
+      api.patch(`/artworks/${id}/images/${imageId}/`, null, { params: { is_internal: internal } }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["artwork", id] });
+      queryClient.invalidateQueries({ queryKey: ["artworks"] });
+    },
+  });
+
   const setPrimaryImageMutation = useMutation({
     // Слэш в конце пути — до query-строки (params), иначе 307
     mutationFn: (imageId: number) =>
@@ -298,6 +342,7 @@ export default function ArtworkDetailPage({
     referral_id: 0,
     sold_price: "",
     referral_fee: "",
+    currency: "",
   });
 
   const sellMutation = useMutation({
@@ -308,6 +353,7 @@ export default function ArtworkDetailPage({
         referral_id: sellForm.referral_id || null,
         sold_price: Number(sellForm.sold_price),
         referral_fee: sellForm.referral_fee ? Number(sellForm.referral_fee) : null,
+        currency: sellForm.currency || artwork?.currency || undefined,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["artwork", id] });
@@ -342,22 +388,7 @@ export default function ArtworkDetailPage({
         <div className="flex flex-wrap gap-2">
           {!editing && (
             <button
-              onClick={async () => {
-                try {
-                  const res = await api.get(`/artworks/${id}/pdf/`, { responseType: "blob" });
-                  const url = URL.createObjectURL(res.data as Blob);
-                  // Скачиваем через <a download>: window.open после await режет popup-блокер.
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = `artoteka_${artwork.inventory_number}.pdf`;
-                  document.body.appendChild(a);
-                  a.click();
-                  a.remove();
-                  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-                } catch {
-                  alert("Не удалось сформировать PDF");
-                }
-              }}
+              onClick={() => setShowPdfModal(true)}
               className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
             >
               <FileDown size={14} /> PDF
@@ -389,6 +420,7 @@ export default function ArtworkDetailPage({
                   referral_id: 0,
                   sold_price: artwork.sale_price ? String(artwork.sale_price) : "",
                   referral_fee: "",
+                  currency: artwork.currency || "",
                 });
                 setShowSellModal(true);
               }}
@@ -526,6 +558,16 @@ export default function ArtworkDetailPage({
                         setShowReserveModal(true);
                         return;
                       }
+                      // Перевод на выставку — через модалку (сроки / площадка)
+                      if (s === "on_exhibition") {
+                        setExhForm({
+                          from: artwork.exhibition_from ?? "",
+                          to: artwork.exhibition_to ?? "",
+                          place: artwork.exhibition_place ?? "",
+                        });
+                        setShowExhModal(true);
+                        return;
+                      }
                       statusMutation.mutate(s);
                     }}
                     className="rounded border px-2 py-0.5 text-xs text-gray-500 hover:bg-gray-100"
@@ -560,6 +602,27 @@ export default function ArtworkDetailPage({
           </div>
         )}
 
+        {/* Инфо о выставке: сроки, площадка */}
+        {artwork.status === "on_exhibition" &&
+          (artwork.exhibition_from || artwork.exhibition_to || artwork.exhibition_place) && (
+          <div className="mb-4 rounded-lg border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-900">
+            <p className="font-medium">
+              На выставке
+              {(artwork.exhibition_from || artwork.exhibition_to) && (
+                <>
+                  {" · "}
+                  {artwork.exhibition_from ? new Date(artwork.exhibition_from).toLocaleDateString("ru") : "…"}
+                  {" – "}
+                  {artwork.exhibition_to ? new Date(artwork.exhibition_to).toLocaleDateString("ru") : "…"}
+                </>
+              )}
+            </p>
+            {artwork.exhibition_place && (
+              <p className="mt-1 text-teal-800">{artwork.exhibition_place}</p>
+            )}
+          </div>
+        )}
+
         {/* Фото: добавить / удалить / сделать главным — доступно всегда */}
         <div className="mb-6">
           {hasImages && (
@@ -584,7 +647,11 @@ export default function ArtworkDetailPage({
                   >
                     <X size={14} />
                   </button>
-                  {img.is_primary ? (
+                  {img.is_internal ? (
+                    <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-full bg-gray-700/80 px-2 py-0.5 text-xs text-white" title="Внутреннее фото — не попадает в клиентский PDF">
+                      🔒 Внутр.
+                    </span>
+                  ) : img.is_primary ? (
                     <span className="absolute bottom-1.5 left-1.5 flex items-center gap-1 rounded-full bg-black/50 px-2 py-0.5 text-xs text-white">
                       <Star size={10} className="fill-amber-400 text-amber-400" /> Главное
                     </span>
@@ -598,29 +665,50 @@ export default function ArtworkDetailPage({
                       <Star size={10} /> Сделать главным
                     </button>
                   )}
+                  <button
+                    type="button"
+                    onClick={() => setInternalMutation.mutate({ imageId: img.id, internal: !img.is_internal })}
+                    disabled={setInternalMutation.isPending}
+                    title={img.is_internal ? "Показывать в каталоге и клиентском PDF" : "Скрыть из клиентского PDF (внутреннее)"}
+                    className="absolute bottom-1.5 right-1.5 rounded-full bg-black/50 px-2 py-0.5 text-xs text-white hover:bg-black/70 disabled:opacity-50"
+                  >
+                    {img.is_internal ? "→ в PDF" : "скрыть из PDF"}
+                  </button>
                 </div>
               ))}
             </div>
           )}
-          <label className="mt-2 inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
-            {uploadImageMutation.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
-            ) : (
-              <Plus size={14} />
-            )}
-            {uploadImageMutation.isPending ? "Загружаю фото..." : "Добавить фото"}
-            <input
-              type="file"
-              accept="image/*"
-              className="hidden"
-              disabled={uploadImageMutation.isPending}
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) uploadImageMutation.mutate(file);
-                e.target.value = "";
-              }}
-            />
-          </label>
+          <div className="mt-2 flex flex-wrap gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
+              {uploadImageMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              {uploadImageMutation.isPending ? "Загружаю..." : "Добавить фото"}
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploadImageMutation.isPending}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadImageMutation.mutate({ file });
+                  e.target.value = "";
+                }}
+              />
+            </label>
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-dashed px-3 py-1.5 text-sm text-gray-500 hover:bg-gray-50" title="Сертификат, оборот картины и т.п. — не уходит в клиентский PDF">
+              <Plus size={14} /> Внутр. документ
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploadImageMutation.isPending}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) uploadImageMutation.mutate({ file, internal: true });
+                  e.target.value = "";
+                }}
+              />
+            </label>
+          </div>
         </div>
 
         {/* Поля */}
@@ -647,26 +735,43 @@ export default function ArtworkDetailPage({
               <input type="number" value={form.height_cm as string} onChange={(e) => setForm({ ...form, height_cm: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Местоположение / адрес</label>
-              <input value={form.location as string} onChange={(e) => setForm({ ...form, location: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
+              <label className="mb-1 block text-xs text-gray-500">Склад / адрес</label>
+              <select value={(form.warehouse_id as number) || 0} onChange={(e) => setForm({ ...form, warehouse_id: Number(e.target.value) })} className="w-full rounded border px-2 py-1.5 text-sm">
+                <option value={0}>— не указан —</option>
+                {storageBy("warehouse").map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Стеллаж</label>
-              <input value={form.rack as string} onChange={(e) => setForm({ ...form, rack: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" placeholder="напр. 3" />
+              <select value={(form.rack_id as number) || 0} onChange={(e) => setForm({ ...form, rack_id: Number(e.target.value) })} className="w-full rounded border px-2 py-1.5 text-sm">
+                <option value={0}>— не указан —</option>
+                {storageBy("rack").map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Полка</label>
-              <input value={form.shelf as string} onChange={(e) => setForm({ ...form, shelf: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" placeholder="напр. 2" />
+              <select value={(form.shelf_id as number) || 0} onChange={(e) => setForm({ ...form, shelf_id: Number(e.target.value) })} className="w-full rounded border px-2 py-1.5 text-sm">
+                <option value={0}>— не указана —</option>
+                {storageBy("shelf").map((s) => (<option key={s.id} value={s.id}>{s.name}</option>))}
+              </select>
             </div>
             {isAdmin && (
               <div>
-                <label className="mb-1 block text-xs text-gray-500">Цена закупки (₽)</label>
+                <label className="mb-1 block text-xs text-gray-500">Цена закупки</label>
                 <input type="number" value={form.purchase_price as string} onChange={(e) => setForm({ ...form, purchase_price: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
               </div>
             )}
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Цена продажи (₽)</label>
+              <label className="mb-1 block text-xs text-gray-500">Цена продажи</label>
               <input type="number" value={form.sale_price as string} onChange={(e) => setForm({ ...form, sale_price: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Валюта</label>
+              <select value={(form.currency as string) || "USD"} onChange={(e) => setForm({ ...form, currency: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm">
+                {SUPPORTED_CURRENCIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Комната</label>
@@ -703,6 +808,10 @@ export default function ArtworkDetailPage({
             <div className="col-span-full">
               <label className="mb-1 block text-xs text-gray-500">Описание</label>
               <textarea value={form.description as string} onChange={(e) => setForm({ ...form, description: e.target.value })} rows={3} className="w-full rounded border px-2 py-1.5 text-sm" />
+            </div>
+            <div className="col-span-full">
+              <label className="mb-1 block text-xs text-gray-500">Провенанс (биография работы: коллекции, выставки, каталоги)</label>
+              <textarea value={form.provenance as string} onChange={(e) => setForm({ ...form, provenance: e.target.value })} rows={3} className="w-full rounded border px-2 py-1.5 text-sm" placeholder="Из собрания…; участвовала в выставке…; упоминается в каталоге…" />
             </div>
             <div className="col-span-full">
               <label className="mb-2 block text-xs text-gray-500">Техника</label>
@@ -790,22 +899,22 @@ export default function ArtworkDetailPage({
                 <p className="font-medium">{artwork.edition}</p>
               </div>
             )}
-            {artwork.location && (
+            {artwork.warehouse && (
               <div>
-                <p className="text-gray-500">Местоположение</p>
-                <p className="font-medium">{artwork.location}</p>
+                <p className="text-gray-500">Склад / адрес</p>
+                <p className="font-medium">{artwork.warehouse.name}</p>
               </div>
             )}
             {artwork.rack && (
               <div>
                 <p className="text-gray-500">Стеллаж</p>
-                <p className="font-medium">{artwork.rack}</p>
+                <p className="font-medium">{artwork.rack.name}</p>
               </div>
             )}
             {artwork.shelf && (
               <div>
                 <p className="text-gray-500">Полка</p>
-                <p className="font-medium">{artwork.shelf}</p>
+                <p className="font-medium">{artwork.shelf.name}</p>
               </div>
             )}
             {artwork.condition && (
@@ -817,13 +926,13 @@ export default function ArtworkDetailPage({
             {isAdmin && artwork.purchase_price != null && (
               <div>
                 <p className="text-gray-500">Цена закупки</p>
-                <p className="font-medium">{Number(artwork.purchase_price).toLocaleString("ru")} ₽</p>
+                <p className="font-medium">{formatPrice(artwork.purchase_price, artwork.currency)}</p>
               </div>
             )}
             {artwork.sale_price != null && (
               <div>
                 <p className="text-gray-500">Цена продажи</p>
-                <p className="font-semibold text-green-700">{Number(artwork.sale_price).toLocaleString("ru")} ₽</p>
+                <p className="font-semibold text-green-700">{formatPrice(artwork.sale_price, artwork.currency)}</p>
               </div>
             )}
             {artwork.room && (
@@ -851,12 +960,66 @@ export default function ArtworkDetailPage({
             <p className="text-sm leading-relaxed text-gray-700">{artwork.description}</p>
           </div>
         )}
+        {!editing && artwork.provenance && (
+          <div className="mt-4 border-t pt-4">
+            <p className="mb-1 text-sm text-gray-500">Провенанс</p>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700">{artwork.provenance}</p>
+          </div>
+        )}
       </div>
 
       {/* Мокапы скрыты до появления рабочей image-модели (gpt-5-image / gemini блокируют RU IP).
           Компонент ArtworkMockup и стр. /mockup в коде остались — раскомментировать здесь и в sidebar.tsx, когда вернём. */}
 
       {/* Модалка подтверждения удаления */}
+      {showPdfModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-sm rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-3 text-lg font-bold text-gray-900">PDF для клиента</h2>
+            <p className="mb-3 text-xs text-gray-500">Что включить в выгружаемый файл. Лого и водяной знак настраиваются в «Настройках».</p>
+            <label className="mb-2 flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={pdfOpts.provenance} onChange={(e) => setPdfOpts({ ...pdfOpts, provenance: e.target.checked })} />
+              Включить провенанс (биографию работы)
+            </label>
+            {isAdmin && (
+              <label className="mb-2 flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" checked={pdfOpts.purchase} onChange={(e) => setPdfOpts({ ...pdfOpts, purchase: e.target.checked })} />
+                Включить закупочную цену (обычно НЕ для клиента)
+              </label>
+            )}
+            <div className="mt-4 flex gap-3">
+              <button
+                onClick={async () => {
+                  try {
+                    const res = await api.get(`/artworks/${id}/pdf/`, {
+                      responseType: "blob",
+                      params: { include_provenance: pdfOpts.provenance, include_purchase_price: pdfOpts.purchase },
+                    });
+                    const url = URL.createObjectURL(res.data as Blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `artoteka_${artwork.inventory_number}.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                    setShowPdfModal(false);
+                  } catch {
+                    alert("Не удалось сформировать PDF");
+                  }
+                }}
+                className="flex-1 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+              >
+                Скачать PDF
+              </button>
+              <button onClick={() => setShowPdfModal(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
@@ -949,6 +1112,55 @@ export default function ArtworkDetailPage({
         </div>
       )}
 
+      {/* Модалка выставки */}
+      {showExhModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-lg font-bold text-gray-900">Отправить на выставку</h2>
+            <p className="mb-4 text-sm text-gray-500">
+              {artwork.title || "Без названия"} — {artwork.artist.name_ru}
+            </p>
+            <div className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">С</label>
+                  <input type="date" value={exhForm.from} onChange={(e) => setExhForm({ ...exhForm, from: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">По</label>
+                  <input type="date" value={exhForm.to} onChange={(e) => setExhForm({ ...exhForm, to: e.target.value })} className="w-full rounded-lg border px-3 py-2 text-sm" />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs text-gray-500">Площадка / заметка</label>
+                <textarea
+                  value={exhForm.place}
+                  onChange={(e) => setExhForm({ ...exhForm, place: e.target.value })}
+                  rows={2}
+                  placeholder="напр. Галерея X, групповая выставка «Лето»"
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex gap-3">
+              <button
+                onClick={() => exhibitionMutation.mutate()}
+                disabled={exhibitionMutation.isPending}
+                className="flex-1 rounded-lg bg-teal-600 py-2 text-sm font-medium text-white hover:bg-teal-500 disabled:opacity-50"
+              >
+                {exhibitionMutation.isPending ? "Сохраняю..." : "На выставку"}
+              </button>
+              <button
+                onClick={() => setShowExhModal(false)}
+                className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Модалка продажи */}
       {showSellModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -986,9 +1198,9 @@ export default function ArtworkDetailPage({
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
-                  <label className="mb-1 block text-xs text-gray-500">Цена продажи (₽) *</label>
+                  <label className="mb-1 block text-xs text-gray-500">Цена продажи *</label>
                   <input
                     type="number"
                     value={sellForm.sold_price}
@@ -998,7 +1210,19 @@ export default function ArtworkDetailPage({
                   />
                 </div>
                 <div>
-                  <label className="mb-1 block text-xs text-gray-500">Реферальный % (₽)</label>
+                  <label className="mb-1 block text-xs text-gray-500">Валюта</label>
+                  <select
+                    value={sellForm.currency || artwork.currency || "USD"}
+                    onChange={(e) => setSellForm({ ...sellForm, currency: e.target.value })}
+                    className="w-full rounded-lg border px-3 py-2 text-sm"
+                  >
+                    {SUPPORTED_CURRENCIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-gray-500">Реферальный взнос</label>
                   <input
                     type="number"
                     value={sellForm.referral_fee}

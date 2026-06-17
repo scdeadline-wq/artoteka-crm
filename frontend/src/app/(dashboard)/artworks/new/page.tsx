@@ -6,7 +6,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Upload, Sparkles, Loader2, X, Check, Wand2, ExternalLink, Plus } from "lucide-react";
 import api from "@/lib/api";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
-import type { Artist, Technique, Room } from "@/lib/types";
+import type { Artist, Technique, Room, StorageOption } from "@/lib/types";
+import { useDefaultCurrency } from "@/lib/useSettings";
+import { SUPPORTED_CURRENCIES } from "@/lib/currency";
 
 type Step = "upload" | "review";
 
@@ -38,6 +40,7 @@ export default function NewArtworkPage() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminRole(user);
+  const defaultCurrency = useDefaultCurrency();
   const [step, setStep] = useState<Step>("upload");
   const [newTech, setNewTech] = useState("");
   const [manualArtist, setManualArtist] = useState(false);
@@ -60,6 +63,11 @@ export default function NewArtworkPage() {
     queryKey: ["rooms"],
     queryFn: () => api.get("/rooms/").then((r) => r.data),
   });
+  const { data: storage = [] } = useQuery<StorageOption[]>({
+    queryKey: ["storage"],
+    queryFn: () => api.get("/storage/").then((r) => r.data),
+  });
+  const storageBy = (kind: string) => storage.filter((s) => s.kind === kind);
 
   const [form, setForm] = useState({
     title: "",
@@ -70,13 +78,14 @@ export default function NewArtworkPage() {
     description: "",
     condition: "",
     style_period: "",
-    location: "",
-    rack: "",
-    shelf: "",
+    warehouse_id: 0,
+    rack_id: 0,
+    shelf_id: 0,
     width_cm: "",
     height_cm: "",
     purchase_price: "",
     sale_price: "",
+    currency: "",
     room_id: 0,
     is_framed: false,
     tags: "",
@@ -178,12 +187,13 @@ export default function NewArtworkPage() {
         description: form.description || null,
         condition: form.condition || null,
         style_period: form.style_period || null,
-        location: form.location || null,
-        rack: form.rack || null,
-        shelf: form.shelf || null,
+        warehouse_id: form.warehouse_id || null,
+        rack_id: form.rack_id || null,
+        shelf_id: form.shelf_id || null,
         width_cm: form.width_cm ? Number(form.width_cm) : null,
         height_cm: form.height_cm ? Number(form.height_cm) : null,
         sale_price: form.sale_price ? Number(form.sale_price) : null,
+        currency: form.currency || defaultCurrency,
         room_id: form.room_id || null,
         is_framed: !!form.is_framed,
         tags: form.tags
@@ -738,7 +748,7 @@ export default function NewArtworkPage() {
             {isAdmin && (
               <div>
                 <label className="mb-1 block text-xs text-gray-500">
-                  Цена закупки (₽)
+                  Цена закупки
                 </label>
                 <input
                   type="number"
@@ -753,7 +763,7 @@ export default function NewArtworkPage() {
             )}
             <div>
               <label className="mb-1 block text-xs text-gray-500">
-                Цена продажи (₽)
+                Цена продажи
                 {aiSuggestion?.estimated_price_rub && (
                   <span className="ml-1 text-amber-600">AI</span>
                 )}
@@ -769,35 +779,57 @@ export default function NewArtworkPage() {
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">
-                Местоположение
-              </label>
-              <input
-                value={form.location}
-                onChange={(e) =>
-                  setForm({ ...form, location: e.target.value })
-                }
+              <label className="mb-1 block text-xs text-gray-500">Валюта</label>
+              <select
+                value={form.currency || defaultCurrency}
+                onChange={(e) => setForm({ ...form, currency: e.target.value })}
                 className="w-full rounded-lg border px-3 py-2 text-sm"
-                placeholder="Склад, адрес"
-              />
+              >
+                {SUPPORTED_CURRENCIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Склад / адрес</label>
+              <select
+                value={form.warehouse_id}
+                onChange={(e) => setForm({ ...form, warehouse_id: Number(e.target.value) })}
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+              >
+                <option value={0}>— не указан —</option>
+                {storageBy("warehouse").map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Стеллаж</label>
-              <input
-                value={form.rack}
-                onChange={(e) => setForm({ ...form, rack: e.target.value })}
+              <select
+                value={form.rack_id}
+                onChange={(e) => setForm({ ...form, rack_id: Number(e.target.value) })}
                 className="w-full rounded-lg border px-3 py-2 text-sm"
-                placeholder="напр. 3"
-              />
+              >
+                <option value={0}>— не указан —</option>
+                {storageBy("rack").map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Полка</label>
-              <input
-                value={form.shelf}
-                onChange={(e) => setForm({ ...form, shelf: e.target.value })}
+              <select
+                value={form.shelf_id}
+                onChange={(e) => setForm({ ...form, shelf_id: Number(e.target.value) })}
                 className="w-full rounded-lg border px-3 py-2 text-sm"
-                placeholder="напр. 2"
-              />
+              >
+                <option value={0}>— не указана —</option>
+                {storageBy("shelf").map((s) => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
+              </select>
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Комната</label>

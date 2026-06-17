@@ -230,11 +230,9 @@ def _format_preview(parsed: dict) -> str:
     if parsed.get("width_cm") and parsed.get("height_cm"):
         msg += f"Размер: {parsed['width_cm']} × {parsed['height_cm']} см\n"
     if parsed.get("sale_price"):
-        msg += f"Цена: {int(float(parsed['sale_price'])):,} ₽\n".replace(",", " ")
+        msg += f"Цена: {int(float(parsed['sale_price'])):,}\n".replace(",", " ")
     if parsed.get("edition"):
         msg += f"Тираж: {parsed['edition']}\n"
-    if parsed.get("location"):
-        msg += f"Локация: {parsed['location']}\n"
     if parsed.get("description"):
         msg += f"Описание: {parsed['description']}\n"
     return msg
@@ -299,7 +297,7 @@ FIELD_PROMPTS = {
     "year": "Введи год (число):",
     "technique": "Введи технику (например, «Холст, масло»):",
     "size": "Введи размер: «ширина x высота» в см (например, 60x80):",
-    "sale_price": "Введи цену в рублях (число):",
+    "sale_price": "Введи цену (число):",
 }
 
 
@@ -493,7 +491,6 @@ def _build_artwork_payload(
         "edition": parsed.get("edition"),
         "description": parsed.get("description") or parsed.get("notes"),
         "style_period": parsed.get("style_period"),
-        "location": parsed.get("location"),
         "width_cm": float(parsed["width_cm"]) if parsed.get("width_cm") else None,
         "height_cm": float(parsed["height_cm"]) if parsed.get("height_cm") else None,
         "sale_price": float(parsed["sale_price"]) if parsed.get("sale_price") else None,

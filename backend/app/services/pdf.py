@@ -1,8 +1,12 @@
 """Рендер карточки произведения в PDF через weasyprint.
 
 Принимает уже загруженный объект Artwork со всеми relationship'ами
-(artist, techniques, images, room). Картинку первичную (или первую)
+(artist, techniques, images, room). Первичную (не-внутреннюю) картинку
 встраивает в PDF как base64-dataURL.
+
+PDF — артефакт для клиента, поэтому настраивается: что включать (провенанс,
+закупочную цену), логотип галереи и водяной знак. Внутренние фото (is_internal)
+в клиентский PDF не попадают.
 """
 from __future__ import annotations
 
@@ -13,22 +17,17 @@ from io import BytesIO
 
 from weasyprint import HTML
 
+from app.currency import symbol as currency_symbol
 from app.models.artwork import Artwork
 from app.services.storage import get_image_bytes
 
 log = logging.getLogger(__name__)
 
 
-def _image_data_url(artwork: Artwork) -> str | None:
-    images = sorted(
-        artwork.images or [],
-        key=lambda i: (not i.is_primary, i.sort_order),
-    )
-    if not images:
+def _fetch_data_url(url: str) -> str | None:
+    key = (url or "").lstrip("/").replace("images/", "", 1)
+    if not key:
         return None
-    primary = images[0]
-    url = primary.url or ""
-    key = url.lstrip("/").replace("images/", "", 1)
     try:
         data, ct = get_image_bytes(key)
     except Exception as e:
@@ -37,11 +36,29 @@ def _image_data_url(artwork: Artwork) -> str | None:
     return f"data:{ct};base64,{base64.b64encode(data).decode()}"
 
 
-def _fmt_price(value) -> str:
+def _image_data_url(artwork: Artwork) -> str | None:
+    # В клиентский PDF — только не-внутренние фото
+    images = [i for i in (artwork.images or []) if not getattr(i, "is_internal", False)]
+    images.sort(key=lambda i: (not i.is_primary, i.sort_order))
+    if not images:
+        return None
+    return _fetch_data_url(images[0].url or "")
+
+
+def _logo_data_url(logo_url: str | None) -> str | None:
+    if not logo_url:
+        return None
+    # Внешний URL — отдаём как есть (weasyprint сам загрузит); внутренний — через storage
+    if logo_url.startswith("http://") or logo_url.startswith("https://"):
+        return logo_url
+    return _fetch_data_url(logo_url)
+
+
+def _fmt_price(value, currency: str | None) -> str:
     if value in (None, ""):
         return "—"
     try:
-        return f"{int(float(value)):,} ₽".replace(",", " ")
+        return f"{int(float(value)):,} {currency_symbol(currency)}".replace(",", " ")
     except (TypeError, ValueError):
         return "—"
 
@@ -65,10 +82,19 @@ STATUS_LABELS = {
     "reserved": "Зарезервирована",
     "sold": "Продана",
     "collection": "В коллекции",
+    "on_exhibition": "На выставке",
 }
 
 
-def _html(artwork: Artwork, *, include_purchase_price: bool) -> str:
+def _html(
+    artwork: Artwork,
+    *,
+    include_purchase_price: bool,
+    include_provenance: bool,
+    gallery_name: str,
+    logo_url: str | None,
+    watermark_text: str | None,
+) -> str:
     artist = artwork.artist
     artist_name = (artist.name_ru if artist else None) or "—"
     artist_en = (artist.name_en if artist else None) or ""
@@ -80,9 +106,11 @@ def _html(artwork: Artwork, *, include_purchase_price: bool) -> str:
     room = artwork.room.name if artwork.room else "—"
     tags = " ".join(f"#{t}" for t in (artwork.tags or [])) or "—"
     description = artwork.description or ""
+    provenance = (artwork.provenance or "") if include_provenance else ""
     edition = artwork.edition or "—"
     condition = artwork.condition or "—"
     year = artwork.year or "—"
+    cur = artwork.currency
 
     img = _image_data_url(artwork)
     img_block = (
@@ -91,23 +119,36 @@ def _html(artwork: Artwork, *, include_purchase_price: bool) -> str:
         else '<div class="image-stub">— нет фото —</div>'
     )
 
+    logo = _logo_data_url(logo_url)
+    logo_block = f'<img class="logo" src="{logo}" alt=""/>' if logo else escape(gallery_name)
+
+    watermark_block = (
+        f'<div class="watermark">{escape(watermark_text)}</div>' if watermark_text else ''
+    )
+
     purchase_block = ""
     if include_purchase_price and artwork.purchase_price is not None:
         purchase_block = (
             f'<dt>Закупочная цена</dt>'
-            f'<dd>{escape(_fmt_price(artwork.purchase_price))}</dd>'
+            f'<dd>{escape(_fmt_price(artwork.purchase_price, cur))}</dd>'
         )
 
     return f"""<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
 <style>
   @page {{ size: A4; margin: 1.8cm; }}
-  body {{ font-family: 'DejaVu Sans', sans-serif; color: #1f2937; }}
+  body {{ font-family: 'DejaVu Sans', sans-serif; color: #1f2937; position: relative; }}
+  .watermark {{
+    position: fixed; top: 45%; left: 0; right: 0; text-align: center;
+    font-size: 60pt; color: rgba(0,0,0,0.06); transform: rotate(-30deg);
+    z-index: 0; font-weight: bold;
+  }}
   .header {{
-    display: flex; justify-content: space-between;
+    display: flex; justify-content: space-between; align-items: center;
     border-bottom: 1px solid #d1d5db; padding-bottom: 8px; margin-bottom: 20px;
     font-size: 9pt; color: #6b7280;
   }}
+  .logo {{ max-height: 1.2cm; max-width: 5cm; }}
   .inv {{ font-size: 11pt; font-weight: bold; color: #111827; letter-spacing: 0.5px; }}
   .image {{ display: block; max-width: 100%; max-height: 11cm; margin: 0 auto 16px; }}
   .image-stub {{
@@ -130,10 +171,13 @@ def _html(artwork: Artwork, *, include_purchase_price: bool) -> str:
     margin-top: 32px; padding-top: 10px; border-top: 1px solid #e5e7eb;
     font-size: 8pt; color: #9ca3af; text-align: center;
   }}
+  .content {{ position: relative; z-index: 1; }}
 </style></head><body>
+  {watermark_block}
+  <div class="content">
   <div class="header">
     <span class="inv">№ {escape(str(artwork.inventory_number))}</span>
-    <span>{escape(status)} · Комната: {escape(room)}</span>
+    <span>{logo_block}</span>
   </div>
 
   {img_block}
@@ -155,14 +199,32 @@ def _html(artwork: Artwork, *, include_purchase_price: bool) -> str:
 
   {f'<div class="desc-title">Описание</div><div class="desc">{escape(description)}</div>' if description else ''}
 
-  {f'<div class="price">Цена продажи: {escape(_fmt_price(artwork.sale_price))}</div>' if artwork.sale_price else ''}
+  {f'<div class="desc-title">Провенанс</div><div class="desc">{escape(provenance)}</div>' if provenance else ''}
 
-  <div class="footer">Артотека CRM</div>
+  {f'<div class="price">Цена продажи: {escape(_fmt_price(artwork.sale_price, cur))}</div>' if artwork.sale_price else ''}
+
+  <div class="footer">{escape(gallery_name)}</div>
+  </div>
 </body></html>"""
 
 
-def render_artwork_pdf(artwork: Artwork, *, include_purchase_price: bool) -> bytes:
-    html_str = _html(artwork, include_purchase_price=include_purchase_price)
+def render_artwork_pdf(
+    artwork: Artwork,
+    *,
+    include_purchase_price: bool,
+    include_provenance: bool = True,
+    gallery_name: str = "Артотека",
+    logo_url: str | None = None,
+    watermark_text: str | None = None,
+) -> bytes:
+    html_str = _html(
+        artwork,
+        include_purchase_price=include_purchase_price,
+        include_provenance=include_provenance,
+        gallery_name=gallery_name,
+        logo_url=logo_url,
+        watermark_text=watermark_text,
+    )
     buf = BytesIO()
     HTML(string=html_str).write_pdf(buf)
     return buf.getvalue()

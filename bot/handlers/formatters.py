@@ -52,13 +52,23 @@ def status_button_keyboard(artwork_id: int) -> InlineKeyboardMarkup:
     ]])
 
 
-def _fmt_price(value) -> str:
+CURRENCY_SYMBOLS = {"USD": "$", "EUR": "€", "RUB": "₽", "GBP": "£", "CNY": "¥"}
+
+
+def currency_symbol(code) -> str:
+    if not code:
+        return "$"
+    return CURRENCY_SYMBOLS.get(str(code).upper(), str(code))
+
+
+def _fmt_price(value, currency=None) -> str:
     if value in (None, ""):
         return "—"
     try:
-        return f"{int(float(value)):,} ₽".replace(",", " ")
+        amount = f"{int(float(value)):,}".replace(",", " ")
     except (TypeError, ValueError):
         return "—"
+    return f"{amount} {currency_symbol(currency)}"
 
 
 def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
@@ -76,13 +86,18 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
         size = f"{size} · в раме" if size != "—" else "В раме"
     elif is_framed is False and size != "—":
         size = f"{size} · без рамы"
-    sale_price = _fmt_price(a.get("sale_price"))
+    cur = a.get("currency")
+    sale_price = _fmt_price(a.get("sale_price"), cur)
     status = (a.get("status") or "draft").lower()
     room = a.get("room") or {}
     room_name = room.get("name") if isinstance(room, dict) else None
     style = a.get("style_period")
-    rack = a.get("rack")
-    shelf = a.get("shelf")
+
+    def _opt_name(v):
+        return v.get("name") if isinstance(v, dict) else None
+    warehouse_name = _opt_name(a.get("warehouse"))
+    rack_name = _opt_name(a.get("rack"))
+    shelf_name = _opt_name(a.get("shelf"))
     tags = a.get("tags") or []
 
     lines = [
@@ -92,23 +107,39 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
     ]
     if style:
         lines.append(f"Стиль: {escape(str(style))}")
+    provenance = a.get("provenance")
+    if provenance:
+        prov = str(provenance)
+        if len(prov) > 200:
+            prov = prov[:200] + "…"
+        lines.append(f"Провенанс: {escape(prov)}")
     lines += [
         f"Размер: {size}",
         f"Цена: {sale_price}",
     ]
     if is_admin and a.get("purchase_price") not in (None, ""):
-        lines.append(f"Закупка: {_fmt_price(a.get('purchase_price'))}")
+        lines.append(f"Закупка: {_fmt_price(a.get('purchase_price'), cur)}")
     storage_bits = []
     if room_name:
         storage_bits.append(f"Комната: {escape(str(room_name))}")
-    if rack:
-        storage_bits.append(f"Стеллаж: {escape(str(rack))}")
-    if shelf:
-        storage_bits.append(f"Полка: {escape(str(shelf))}")
+    if warehouse_name:
+        storage_bits.append(f"Склад: {escape(str(warehouse_name))}")
+    if rack_name:
+        storage_bits.append(f"Стеллаж: {escape(str(rack_name))}")
+    if shelf_name:
+        storage_bits.append(f"Полка: {escape(str(shelf_name))}")
     lines.append(f"№ {inv}" + (" · " + " · ".join(storage_bits) if storage_bits else ""))
     if tags:
         lines.append("Теги: " + " ".join(f"#{escape(str(t))}" for t in tags))
     lines.append(f"Статус: {STATUS_LABEL.get(status, status)}")
+    if status == "on_exhibition":
+        ex_from = a.get("exhibition_from")
+        ex_to = a.get("exhibition_to")
+        ex_place = a.get("exhibition_place")
+        if ex_from or ex_to:
+            lines.append(f"Сроки: {ex_from or '…'} – {ex_to or '…'}")
+        if ex_place:
+            lines.append(f"Площадка: {escape(str(ex_place))}")
     return "\n".join(lines)
 
 

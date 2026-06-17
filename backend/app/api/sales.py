@@ -10,8 +10,10 @@ from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.auth import get_current_user, is_admin
+from app.currency import normalize_currency
 from app.models import Sale, Artwork, ArtworkStatus, Client, User
 from app.schemas.sale import SaleCreate, SaleOut
+from app.services.settings import get_default_currency
 
 router = APIRouter()
 
@@ -61,7 +63,7 @@ async def export_sales(
 
     buf = io.StringIO()
     writer = csv.writer(buf, delimiter=";")
-    header = ["Дата", "Инв. номер", "Название", "Художник", "Клиент", "Цена продажи"]
+    header = ["Дата", "Инв. номер", "Название", "Художник", "Клиент", "Цена продажи", "Валюта"]
     if admin:
         header += ["Закупочная цена", "Маржа"]
     writer.writerow(header)
@@ -75,6 +77,7 @@ async def export_sales(
             (artwork.artist.name_ru if artwork.artist else "") if artwork else "",
             sale.client.name if sale.client else "",
             sale.sold_price,
+            sale.currency or "USD",
         ]
         if admin:
             purchase = artwork.purchase_price if artwork else None
@@ -111,7 +114,13 @@ async def create_sale(
     if not client:
         raise HTTPException(status_code=400, detail="Client not found")
 
-    sale = Sale(**body.model_dump())
+    data = body.model_dump()
+    # Валюта сделки: явная → валюта работы → дефолт из настроек
+    if data.get("currency"):
+        data["currency"] = normalize_currency(data["currency"])
+    else:
+        data["currency"] = artwork.currency or await get_default_currency(db)
+    sale = Sale(**data)
     artwork.status = ArtworkStatus.sold
     db.add(sale)
     await db.commit()
@@ -181,6 +190,7 @@ def _sale_to_out(sale: Sale, user: User) -> SaleOut:
         purchase_price=purchase_price,
         referral_fee=sale.referral_fee,
         margin=margin,
+        currency=sale.currency or "USD",
         notes=sale.notes,
         sold_at=sale.sold_at,
     )

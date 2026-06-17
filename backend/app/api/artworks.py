@@ -10,7 +10,9 @@ from sqlalchemy.orm import selectinload
 from app.database import get_db
 from app.sorting import surname_expr
 from app.auth import get_current_user, is_admin, require_admin
+from app.currency import normalize_currency
 from app.models import Artwork, ArtworkStatus, Artist, Technique, Image, Sale, User
+from app.services.settings import get_default_currency, get_all_settings
 from app.schemas.artwork import ArtworkCreate, ArtworkUpdate, ArtworkOut, ArtworkListOut
 from fastapi.responses import Response as FastAPIResponse
 from app.services.storage import upload_image, get_image_bytes, delete_object
@@ -58,6 +60,12 @@ def _clear_reserve_fields(artwork: Artwork) -> None:
     artwork.reserve_note = None
 
 
+def _clear_exhibition_fields(artwork: Artwork) -> None:
+    artwork.exhibition_from = None
+    artwork.exhibition_to = None
+    artwork.exhibition_place = None
+
+
 @router.get("/", response_model=list[ArtworkListOut])
 async def list_artworks(
     status: str | None = None,
@@ -70,8 +78,9 @@ async def list_artworks(
     price_from: float | None = None,
     price_to: float | None = None,
     room_id: int | None = None,
-    rack: str | None = None,
-    shelf: str | None = None,
+    warehouse_id: int | None = None,
+    rack_id: int | None = None,
+    shelf_id: int | None = None,
     q: str | None = None,
     sort: str | None = None,
     limit: int = Query(50, le=200),
@@ -109,10 +118,12 @@ async def list_artworks(
         stmt = stmt.where(Artwork.sale_price <= price_to)
     if room_id is not None:
         stmt = stmt.where(Artwork.room_id == room_id)
-    if rack:
-        stmt = stmt.where(Artwork.rack.ilike(f"%{_escape_like(rack)}%", escape="\\"))
-    if shelf:
-        stmt = stmt.where(Artwork.shelf.ilike(f"%{_escape_like(shelf)}%", escape="\\"))
+    if warehouse_id is not None:
+        stmt = stmt.where(Artwork.warehouse_id == warehouse_id)
+    if rack_id is not None:
+        stmt = stmt.where(Artwork.rack_id == rack_id)
+    if shelf_id is not None:
+        stmt = stmt.where(Artwork.shelf_id == shelf_id)
     if q:
         from sqlalchemy import or_ as sa_or
         q_clean = q.strip().lstrip("№#").strip()
@@ -225,6 +236,8 @@ async def create_artwork(
 
     data = body.model_dump(exclude={"technique_ids"})
     data["status"] = _parse_status(data["status"])
+    # Валюта: явная → дефолт из настроек
+    data["currency"] = normalize_currency(data.get("currency")) if data.get("currency") else await get_default_currency(db)
     # purchase_price может задавать только admin
     if not is_admin(user):
         data.pop("purchase_price", None)
@@ -258,6 +271,9 @@ async def create_artwork(
             selectinload(Artwork.techniques),
             selectinload(Artwork.images),
             selectinload(Artwork.room),
+            selectinload(Artwork.warehouse),
+            selectinload(Artwork.rack),
+            selectinload(Artwork.shelf),
         )
         .where(Artwork.id == artwork.id)
     )
@@ -278,6 +294,9 @@ async def get_artwork(
             selectinload(Artwork.techniques),
             selectinload(Artwork.images),
             selectinload(Artwork.room),
+            selectinload(Artwork.warehouse),
+            selectinload(Artwork.rack),
+            selectinload(Artwork.shelf),
         )
         .where(Artwork.id == artwork_id)
     )
@@ -301,6 +320,9 @@ async def update_artwork(
             selectinload(Artwork.techniques),
             selectinload(Artwork.images),
             selectinload(Artwork.room),
+            selectinload(Artwork.warehouse),
+            selectinload(Artwork.rack),
+            selectinload(Artwork.shelf),
         )
         .where(Artwork.id == artwork_id)
     )
@@ -313,6 +335,13 @@ async def update_artwork(
 
     if "status" in data:
         data["status"] = _parse_status(data["status"])
+
+    # Валюта: нормализуем; пустую не затираем (колонка non-nullable)
+    if "currency" in data:
+        if data["currency"]:
+            data["currency"] = normalize_currency(data["currency"])
+        else:
+            data.pop("currency")
 
     # Менять purchase_price может только admin
     if not is_admin(user):
@@ -327,6 +356,16 @@ async def update_artwork(
         data["reserved_client_id"] = None
         data["reserved_until"] = None
         data["reserve_note"] = None
+
+    # Снимаем данные выставки при смене статуса с on_exhibition на любой другой
+    if (
+        "status" in data
+        and artwork.status == ArtworkStatus.on_exhibition
+        and data["status"] != ArtworkStatus.on_exhibition
+    ):
+        data["exhibition_from"] = None
+        data["exhibition_to"] = None
+        data["exhibition_place"] = None
 
     for key, value in data.items():
         setattr(artwork, key, value)
@@ -468,10 +507,13 @@ def _parse_year(year_str: str | None) -> int | None:
 @router.get("/{artwork_id}/pdf/")
 async def artwork_pdf(
     artwork_id: int,
+    include_provenance: bool = True,
+    include_purchase_price: bool | None = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """PDF-карточка работы. Закупочная цена — только для admin."""
+    """PDF-карточка работы для клиента. Тумблеры (провенанс, закупочная цена),
+    лого и водяной знак берутся из настроек. Закупочная цена — только admin."""
     stmt = (
         select(Artwork)
         .options(
@@ -479,6 +521,9 @@ async def artwork_pdf(
             selectinload(Artwork.techniques),
             selectinload(Artwork.images),
             selectinload(Artwork.room),
+            selectinload(Artwork.warehouse),
+            selectinload(Artwork.rack),
+            selectinload(Artwork.shelf),
         )
         .where(Artwork.id == artwork_id)
     )
@@ -486,8 +531,24 @@ async def artwork_pdf(
     if not artwork:
         raise HTTPException(status_code=404, detail="Artwork not found")
 
+    # Закупочную цену показываем только админам и только если явно попросили (по умолчанию — да для admin)
+    show_purchase = is_admin(user) and (include_purchase_price is not False)
+
+    cfg = await get_all_settings(db)
+    watermark = None
+    if (cfg.get("pdf_watermark_enabled") or "").lower() == "true":
+        watermark = cfg.get("pdf_watermark_text") or cfg.get("gallery_name") or "Артотека"
+
     # weasyprint — синхронный и тяжёлый, не блокируем event loop
-    pdf_bytes = await asyncio.to_thread(render_artwork_pdf, artwork, include_purchase_price=is_admin(user))
+    pdf_bytes = await asyncio.to_thread(
+        render_artwork_pdf,
+        artwork,
+        include_purchase_price=show_purchase,
+        include_provenance=include_provenance,
+        gallery_name=cfg.get("gallery_name") or "Артотека",
+        logo_url=cfg.get("pdf_logo_url") or None,
+        watermark_text=watermark,
+    )
     inv = artwork.inventory_number
     return FastAPIResponse(
         content=pdf_bytes,
@@ -510,6 +571,8 @@ async def change_status(
     # Снимаем резерв при смене статуса с reserved на любой другой
     if artwork.status == ArtworkStatus.reserved and new_status != ArtworkStatus.reserved:
         _clear_reserve_fields(artwork)
+    if artwork.status == ArtworkStatus.on_exhibition and new_status != ArtworkStatus.on_exhibition:
+        _clear_exhibition_fields(artwork)
     artwork.status = new_status
     await db.commit()
     return {"ok": True, "status": status}
@@ -520,6 +583,7 @@ async def upload_artwork_image(
     artwork_id: int,
     file: UploadFile = File(...),
     is_primary: bool = False,
+    is_internal: bool = False,
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
@@ -528,11 +592,12 @@ async def upload_artwork_image(
         raise HTTPException(status_code=404, detail="Artwork not found")
 
     url = await upload_image(file, artwork_id)
-    image = Image(artwork_id=artwork_id, url=url, is_primary=is_primary)
+    # Внутреннее фото (сертификат, оборот) не может быть главным
+    image = Image(artwork_id=artwork_id, url=url, is_primary=is_primary and not is_internal, is_internal=is_internal)
     db.add(image)
     await db.commit()
     await db.refresh(image)
-    return {"id": image.id, "url": image.url}
+    return {"id": image.id, "url": image.url, "is_internal": image.is_internal}
 
 
 @router.delete("/{artwork_id}/images/{image_id}/", status_code=204)
@@ -578,23 +643,31 @@ async def delete_artwork_image(
 async def update_artwork_image(
     artwork_id: int,
     image_id: int,
-    is_primary: bool = Query(...),
+    is_primary: bool | None = Query(None),
+    is_internal: bool | None = Query(None),
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    """Сделать фото главным (is_primary=true) — снимает primary с остальных."""
+    """Сделать фото главным (is_primary=true, снимает primary с остальных) и/или
+    пометить как внутреннее (is_internal — не попадает в клиентский PDF)."""
     stmt = select(Image).where(Image.id == image_id, Image.artwork_id == artwork_id)
     image = (await db.execute(stmt)).scalar_one_or_none()
     if not image:
         raise HTTPException(status_code=404, detail="Image not found")
 
-    if is_primary:
+    if is_internal is not None:
+        image.is_internal = is_internal
+        if is_internal:
+            image.is_primary = False  # внутреннее фото не может быть главным
+    if is_primary is not None and is_primary and not image.is_internal:
         others_stmt = select(Image).where(Image.artwork_id == artwork_id, Image.id != image_id)
         for other in (await db.execute(others_stmt)).scalars().all():
             other.is_primary = False
-    image.is_primary = is_primary
+        image.is_primary = True
+    elif is_primary is False:
+        image.is_primary = False
     await db.commit()
-    return {"id": image.id, "url": image.url, "is_primary": image.is_primary}
+    return {"id": image.id, "url": image.url, "is_primary": image.is_primary, "is_internal": image.is_internal}
 
 
 @router.post("/enhance-image/")

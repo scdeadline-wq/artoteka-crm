@@ -42,22 +42,29 @@ class Artwork(Base):
     edition: Mapped[str | None] = mapped_column(String(100), default=None)
     description: Mapped[str | None] = mapped_column(Text, default=None)
     condition: Mapped[str | None] = mapped_column(Text, default=None)
+    provenance: Mapped[str | None] = mapped_column(Text, default=None)  # биография работы: коллекции, выставки, каталоги
     style_period: Mapped[str | None] = mapped_column(Text, default=None)
     has_expertise: Mapped[bool] = mapped_column(Boolean, default=False)
     status: Mapped[ArtworkStatus] = mapped_column(Enum(ArtworkStatus), default=ArtworkStatus.draft, index=True)
-    location: Mapped[str | None] = mapped_column(String(300), default=None)
-    rack: Mapped[str | None] = mapped_column(String(100), default=None)   # стеллаж
-    shelf: Mapped[str | None] = mapped_column(String(100), default=None)  # полка
+    # Хранение — выпадающие справочники (admin ведёт, менеджер выбирает). См. StorageOption.
+    warehouse_id: Mapped[int | None] = mapped_column(ForeignKey("storage_options.id", ondelete="SET NULL"), default=None)  # склад/адрес
+    rack_id: Mapped[int | None] = mapped_column(ForeignKey("storage_options.id", ondelete="SET NULL"), default=None)       # стеллаж
+    shelf_id: Mapped[int | None] = mapped_column(ForeignKey("storage_options.id", ondelete="SET NULL"), default=None)      # полка
     width_cm: Mapped[float | None] = mapped_column(Numeric(8, 1), default=None)
     height_cm: Mapped[float | None] = mapped_column(Numeric(8, 1), default=None)
     purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
     sale_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
+    currency: Mapped[str] = mapped_column(String(3), default="USD", server_default="USD")  # валюта цен работы
     notes: Mapped[str | None] = mapped_column(Text, default=None)
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id", ondelete="SET NULL"), default=None, index=True)
     is_framed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     reserved_client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), default=None)
     reserved_until: Mapped[date | None] = mapped_column(Date, default=None)
     reserve_note: Mapped[str | None] = mapped_column(String(500), default=None)
+    # Выставка с точными сроками (статус on_exhibition) — по аналогии с резервом
+    exhibition_from: Mapped[date | None] = mapped_column(Date, default=None)
+    exhibition_to: Mapped[date | None] = mapped_column(Date, default=None)
+    exhibition_place: Mapped[str | None] = mapped_column(String(500), default=None)
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -68,6 +75,9 @@ class Artwork(Base):
     images: Mapped[list["Image"]] = relationship(back_populates="artwork", cascade="all, delete-orphan")
     attachments: Mapped[list["ArtworkAttachment"]] = relationship(back_populates="artwork", cascade="all, delete-orphan")
     room: Mapped["Room | None"] = relationship(back_populates="artworks")
+    warehouse: Mapped["StorageOption | None"] = relationship(foreign_keys=[warehouse_id])
+    rack: Mapped["StorageOption | None"] = relationship(foreign_keys=[rack_id])
+    shelf: Mapped["StorageOption | None"] = relationship(foreign_keys=[shelf_id])
 
 
 class Image(Base):
@@ -77,6 +87,7 @@ class Image(Base):
     artwork_id: Mapped[int] = mapped_column(ForeignKey("artworks.id", ondelete="CASCADE"))
     url: Mapped[str] = mapped_column(String(500))
     is_primary: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_internal: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")  # внутреннее фото (сертификат, оборот) — не в клиентский PDF
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

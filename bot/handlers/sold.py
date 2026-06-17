@@ -11,7 +11,7 @@ from telegram.ext import (
 
 from bot.handlers.auth import require_whitelist
 from bot.handlers.auth import is_admin
-from bot.handlers.formatters import format_artwork_card
+from bot.handlers.formatters import format_artwork_card, currency_symbol
 from bot.handlers.keyboard import BTN_SOLD
 from bot.services.crm import crm
 
@@ -100,7 +100,7 @@ async def buyer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data["sold_client_id"] = client["id"]
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text(
-            f"Создан клиент: {client['name']} (id={client['id']})\n\nЦена продажи в рублях?"
+            f"Создан клиент: {client['name']} (id={client['id']})\n\nЦена продажи?"
         )
         return ENTER_PRICE
 
@@ -113,7 +113,7 @@ async def buyer_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     client = next((c for c in found if c["id"] == client_id), None)
     name = client["name"] if client else f"id={client_id}"
     await query.edit_message_reply_markup(reply_markup=None)
-    await query.message.reply_text(f"Покупатель: {name}\n\nЦена продажи в рублях?")
+    await query.message.reply_text(f"Покупатель: {name}\n\nЦена продажи?")
     return ENTER_PRICE
 
 
@@ -125,7 +125,7 @@ async def skip_buyer(update: Update, context: ContextTypes.DEFAULT_TYPE):
         dealer = await crm.create_client({"name": "Дилер (без имени)", "client_type": "dealer"})
     context.user_data["sold_client_id"] = dealer["id"]
     await update.message.reply_text(
-        "Покупатель: Дилер\n\nЦена продажи в рублях?"
+        "Покупатель: Дилер\n\nЦена продажи?"
     )
     return ENTER_PRICE
 
@@ -148,10 +148,11 @@ async def enter_price(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "sold_price": price,
     })
 
+    sym = currency_symbol(artwork.get("currency"))
     await update.message.reply_text(
         f"✅ Готово!\n"
         f"🎨 {artwork.get('title') or '(без названия)'} → ПРОДАНА\n"
-        f"💰 {int(price):,} ₽".replace(",", " ")
+        f"💰 {int(price):,} {sym}".replace(",", " ")
     )
     context.user_data.clear()
     return ConversationHandler.END

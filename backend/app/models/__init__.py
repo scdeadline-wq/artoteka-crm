@@ -7,6 +7,9 @@ from app.models.attachment import ArtworkAttachment, AttachmentKind
 from app.models.client import Client, ClientType, client_artists
 from app.models.sale import Sale
 from app.models.mockup import Mockup
+from app.models.setting import AppSetting
+from app.models.storage import StorageOption
+from app.models.selection import ClientSelection
 
 __all__ = [
     "User", "UserRole",
@@ -18,4 +21,7 @@ __all__ = [
     "Client", "ClientType", "client_artists",
     "Sale",
     "Mockup",
+    "AppSetting",
+    "StorageOption",
+    "ClientSelection",
 ]
