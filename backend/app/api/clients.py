@@ -105,9 +105,11 @@ async def get_client(
         )
         for s in sorted(client.purchases, key=lambda x: x.sold_at, reverse=True)
     ]
-    detail = ClientDetailOut.model_validate(client)
-    detail.purchases = purchases
-    return detail
+    # ВАЖНО: не через ClientDetailOut.model_validate(client) — он пытается
+    # провалидировать client.purchases (ORM-объекты Sale) в ClientPurchase и падает
+    # (500) у клиентов с покупками. Собираем базовые поля через ClientOut, purchases — отдельно.
+    base = ClientOut.model_validate(client)
+    return ClientDetailOut(**base.model_dump(), purchases=purchases)
 
 
 @router.put("/{client_id}/", response_model=ClientOut)
