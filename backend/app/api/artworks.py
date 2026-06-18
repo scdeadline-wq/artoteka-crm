@@ -531,12 +531,13 @@ def _parse_year(year_str: str | None) -> int | None:
 async def artwork_pdf(
     artwork_id: int,
     include_provenance: bool = True,
-    include_purchase_price: bool | None = None,
+    include_sale_price: bool = True,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    """PDF-карточка работы для клиента. Тумблеры (провенанс, закупочная цена),
-    лого и водяной знак берутся из настроек. Закупочная цена — только admin."""
+    """PDF-карточка работы для клиента. Тумблеры (провенанс, цена продажи),
+    лого и водяной знак берутся из настроек. Закупочная цена в PDF не выводится —
+    это внутренняя информация."""
     stmt = (
         select(Artwork)
         .options(
@@ -554,9 +555,6 @@ async def artwork_pdf(
     if not artwork:
         raise HTTPException(status_code=404, detail="Artwork not found")
 
-    # Закупочную цену показываем только админам и только если явно попросили (по умолчанию — да для admin)
-    show_purchase = is_admin(user) and (include_purchase_price is not False)
-
     cfg = await get_all_settings(db)
     watermark = None
     if (cfg.get("pdf_watermark_enabled") or "").lower() == "true":
@@ -566,7 +564,7 @@ async def artwork_pdf(
     pdf_bytes = await asyncio.to_thread(
         render_artwork_pdf,
         artwork,
-        include_purchase_price=show_purchase,
+        include_sale_price=include_sale_price,
         include_provenance=include_provenance,
         gallery_name=cfg.get("gallery_name") or "Артотека",
         logo_url=cfg.get("pdf_logo_url") or None,

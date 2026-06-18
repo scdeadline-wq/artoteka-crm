@@ -49,7 +49,7 @@ export default function ArtworkDetailPage({
   const [showReserveModal, setShowReserveModal] = useState(false);
   const [showExhModal, setShowExhModal] = useState(false);
   const [showPdfModal, setShowPdfModal] = useState(false);
-  const [pdfOpts, setPdfOpts] = useState({ provenance: true, purchase: false });
+  const [pdfOpts, setPdfOpts] = useState({ provenance: true, salePrice: true });
   const [newTech, setNewTech] = useState("");
   const [manualArtist, setManualArtist] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -982,19 +982,17 @@ export default function ArtworkDetailPage({
               <input type="checkbox" checked={pdfOpts.provenance} onChange={(e) => setPdfOpts({ ...pdfOpts, provenance: e.target.checked })} />
               Включить провенанс (биографию работы)
             </label>
-            {isAdmin && (
-              <label className="mb-2 flex items-center gap-2 text-sm text-gray-700">
-                <input type="checkbox" checked={pdfOpts.purchase} onChange={(e) => setPdfOpts({ ...pdfOpts, purchase: e.target.checked })} />
-                Включить закупочную цену (обычно НЕ для клиента)
-              </label>
-            )}
+            <label className="mb-2 flex items-center gap-2 text-sm text-gray-700">
+              <input type="checkbox" checked={pdfOpts.salePrice} onChange={(e) => setPdfOpts({ ...pdfOpts, salePrice: e.target.checked })} />
+              Показать цену продажи
+            </label>
             <div className="mt-4 flex gap-3">
               <button
                 onClick={async () => {
                   try {
                     const res = await api.get(`/artworks/${id}/pdf/`, {
                       responseType: "blob",
-                      params: { include_provenance: pdfOpts.provenance, include_purchase_price: pdfOpts.purchase },
+                      params: { include_provenance: pdfOpts.provenance, include_sale_price: pdfOpts.salePrice },
                     });
                     const url = URL.createObjectURL(res.data as Blob);
                     const a = document.createElement("a");

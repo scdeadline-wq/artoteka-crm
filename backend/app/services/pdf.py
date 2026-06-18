@@ -102,7 +102,7 @@ STATUS_LABELS = {
 def _html(
     artwork: Artwork,
     *,
-    include_purchase_price: bool,
+    include_sale_price: bool,
     include_provenance: bool,
     gallery_name: str,
     logo_url: str | None,
@@ -138,13 +138,6 @@ def _html(
     watermark_block = (
         f'<div class="watermark">{escape(watermark_text)}</div>' if watermark_text else ''
     )
-
-    purchase_block = ""
-    if include_purchase_price and artwork.purchase_price is not None:
-        purchase_block = (
-            f'<dt>Закупочная цена</dt>'
-            f'<dd>{escape(_fmt_price(artwork.purchase_price, cur))}</dd>'
-        )
 
     return f"""<!DOCTYPE html>
 <html lang="ru"><head><meta charset="utf-8">
@@ -207,14 +200,13 @@ def _html(
     <div><dt>Состояние</dt><dd>{escape(condition)}</dd></div>
     <div><dt>Оформление</dt><dd>{escape(framed)}</dd></div>
     {f'<div><dt>Теги</dt><dd>{escape(tags)}</dd></div>' if artwork.tags else ''}
-    {f'<div>{purchase_block}</div>' if purchase_block else ''}
   </dl>
 
   {f'<div class="desc-title">Описание</div><div class="desc">{escape(description)}</div>' if description else ''}
 
   {f'<div class="desc-title">Провенанс</div><div class="desc">{escape(provenance)}</div>' if provenance else ''}
 
-  {f'<div class="price">Цена продажи: {escape(_fmt_price(artwork.sale_price, cur))}</div>' if artwork.sale_price else ''}
+  {f'<div class="price">Цена продажи: {escape(_fmt_price(artwork.sale_price, cur))}</div>' if (include_sale_price and artwork.sale_price) else ''}
 
   <div class="footer">{escape(gallery_name)}</div>
   </div>
@@ -224,7 +216,7 @@ def _html(
 def render_artwork_pdf(
     artwork: Artwork,
     *,
-    include_purchase_price: bool,
+    include_sale_price: bool = True,
     include_provenance: bool = True,
     gallery_name: str = "Артотека",
     logo_url: str | None = None,
@@ -232,7 +224,7 @@ def render_artwork_pdf(
 ) -> bytes:
     html_str = _html(
         artwork,
-        include_purchase_price=include_purchase_price,
+        include_sale_price=include_sale_price,
         include_provenance=include_provenance,
         gallery_name=gallery_name,
         logo_url=logo_url,
