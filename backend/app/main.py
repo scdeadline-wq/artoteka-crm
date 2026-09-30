@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
+from app.config import settings as app_settings
 from app.api import artworks, artists, techniques, auth, clients, sales, dashboard, import_airtable, rooms, users, settings as settings_api, storage
 from app.services.storage import get_image_bytes, get_or_make_thumbnail
 
@@ -16,7 +17,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://185.152.94.51"],
+    allow_origins=[o.strip() for o in app_settings.cors_origins.split(",") if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

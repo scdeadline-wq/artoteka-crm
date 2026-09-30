@@ -26,7 +26,9 @@ class Settings(BaseSettings):
 
     # Web search (SearchAPI.io — Yandex reverse image)
     searchapi_key: str = ""
-    public_base_url: str = "http://185.152.94.51:8000"
+    public_base_url: str = "http://176.124.219.38:8000"
+    # Через запятую; на проде можно переопределить CORS_ORIGINS в .env
+    cors_origins: str = "http://localhost:3000,http://176.124.219.38"
 
     # Telegram
     telegram_bot_token: str = ""
