@@ -88,7 +88,7 @@ services:
     build:
       context: ../frontend
       args:
-        NEXT_PUBLIC_API_URL: http://185.152.94.51:8000
+        NEXT_PUBLIC_API_URL: ${PUBLIC_API_URL:-http://176.124.219.38:8000}
     restart: always
     environment:
       HOSTNAME: "0.0.0.0"

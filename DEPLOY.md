@@ -5,25 +5,25 @@
 | Параметр | Значение |
 |----------|----------|
 | Провайдер | (из скриншота — вероятно Timeweb/Selectel) |
-| IP | 185.152.94.51 |
+| IP | 176.124.219.38 |
 | IPv6 | 2a03:6f00:a::1:e3da |
 | ОС | Ubuntu 24.04.3 LTS |
 | CPU | 1 vCPU (x86_64) |
 | RAM | 1.9 GB |
 | Диск | 29 GB SSD (19 GB свободно) |
-| SSH | `ssh root@185.152.94.51` |
+| SSH | `ssh root@176.124.219.38` |
 | Закрытые порты | 587, 2525, 389, 465, 53413, 25, 3389 |
 
 ## Доступы
 
 ### CRM (Артотека)
-- **Фронт:** http://185.152.94.51
-- **API:** http://185.152.94.51:8000
-- **Swagger (API docs):** http://185.152.94.51:8000/docs
+- **Фронт:** http://176.124.219.38
+- **API:** http://176.124.219.38:8000
+- **Swagger (API docs):** http://176.124.219.38:8000/docs
 - **Логин:** `paruer@artoteka.ru` / `artoteka2026`
 
 ### MinIO (хранилище фото)
-- Консоль: http://185.152.94.51:9001 (только изнутри Docker-сети)
+- Консоль: http://176.124.219.38:9001 (только изнутри Docker-сети)
 - Credentials: см. `/opt/artoteka-crm/deploy/.env` на сервере
 
 ### Другие сервисы на VPS
@@ -77,7 +77,7 @@
 
 С локалки одной командой:
 ```bash
-ssh root@185.152.94.51 "cd /opt/artoteka-crm && ./deploy/update.sh backend"
+ssh root@176.124.219.38 "cd /opt/artoteka-crm && ./deploy/update.sh backend"
 ```
 
 `update.sh` по шагам:
@@ -110,7 +110,7 @@ chmod +x deploy/autopull.sh deploy/update.sh
 ## Откат деплоя
 
 ```bash
-ssh root@185.152.94.51 "cd /opt/artoteka-crm && ./deploy/rollback.sh"
+ssh root@176.124.219.38 "cd /opt/artoteka-crm && ./deploy/rollback.sh"
 ```
 
 Что делает:
@@ -156,7 +156,7 @@ docker compose -f docker-compose.vps.yml logs -f postgres   # логи БД
 
 ## TODO: когда будет домен
 
-1. Привязать домен `artoteka.ru` → A-запись на 185.152.94.51
+1. Привязать домен `artoteka.ru` → A-запись на 176.124.219.38
 2. Переключиться на `docker-compose.prod.yml` (с nginx + certbot)
 3. Обновить `PUBLIC_API_URL` в `.env` на `https://api.artoteka.ru`
 4. Пересобрать frontend
