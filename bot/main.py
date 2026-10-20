@@ -13,6 +13,7 @@ from bot.handlers.add import build_add_handler
 from bot.handlers.client import build_client_handler
 from bot.handlers.delete import build_delete_handlers
 from bot.handlers.find import build_find_handler, build_status_handlers
+from bot.handlers.results import build_results_handlers
 from bot.handlers.search import build_search_handler
 from bot.handlers.sold import build_sold_handler
 from bot.handlers.start import help_cmd, start
@@ -85,6 +86,8 @@ def main() -> None:
     for h in build_delete_handlers():
         app.add_handler(h)
     for h in build_status_handlers():
+        app.add_handler(h)
+    for h in build_results_handlers():
         app.add_handler(h)
     app.add_error_handler(_on_error)
 

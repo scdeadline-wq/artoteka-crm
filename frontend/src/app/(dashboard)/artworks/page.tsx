@@ -4,13 +4,14 @@ import { Suspense, useState } from "react";
 import { useQuery, useInfiniteQuery } from "@tanstack/react-query";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { Plus, Search, Share2, Trash2 } from "lucide-react";
 import api from "@/lib/api";
 import { thumbUrl } from "@/lib/image";
 import { useAuthStore, isAdmin as isAdminRole } from "@/lib/store";
 import type { ArtworkListItem, Artist, Technique, Room, StorageOption } from "@/lib/types";
 import { STATUS_LABELS } from "@/lib/types";
 import { formatPrice } from "@/lib/currency";
+import ShareDialog from "@/components/share-dialog";
 
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-gray-100 text-gray-700",
@@ -53,6 +54,7 @@ function ArtworksContent() {
   const [sort, setSort] = useState<"" | "last_name" | "inventory" | "price_asc" | "price_desc">("");
   // 0 = «Все»; иначе id комнаты.
   const [roomId, setRoomId] = useState<number>(0);
+  const [shareOpen, setShareOpen] = useState(false);
   const user = useAuthStore((s) => s.user);
   const isAdmin = isAdminRole(user);
 
@@ -139,6 +141,12 @@ function ArtworksContent() {
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900">Произведения</h1>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShareOpen(true)}
+            className="flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm text-gray-600 hover:bg-gray-50"
+          >
+            <Share2 size={14} /> Поделиться
+          </button>
           {isAdmin && (
             <Link
               href="/artworks/trash"
@@ -156,6 +164,15 @@ function ArtworksContent() {
           </Link>
         </div>
       </div>
+
+      {shareOpen && (
+        <ShareDialog
+          artists={artists}
+          initialArtistId={artistFilter ? Number(artistFilter) : undefined}
+          initialTag={tagFilter.trim() || undefined}
+          onClose={() => setShareOpen(false)}
+        />
+      )}
 
       {rooms.length > 0 && (
         <div className="mb-3 flex flex-wrap gap-1.5 border-b">
@@ -359,7 +376,7 @@ function ArtworksContent() {
                 </p>
                 <p className="mt-0.5 text-xs text-gray-600 break-words">
                   {aw.title || "Без названия"}
-                  {aw.year ? `, ${aw.year}` : ""}
+                  {aw.year_text || aw.year ? `, ${aw.year_text || aw.year}` : ""}
                 </p>
                 <div className="mt-2 flex flex-wrap items-center justify-between gap-1">
                   <span

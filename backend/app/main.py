@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from app.config import settings as app_settings
-from app.api import artworks, artists, techniques, auth, clients, sales, dashboard, import_airtable, rooms, users, settings as settings_api, storage
+from app.api import artworks, artists, techniques, auth, clients, sales, dashboard, import_airtable, rooms, users, settings as settings_api, storage, shares
 from app.services.storage import get_image_bytes, get_or_make_thumbnail
 
 app = FastAPI(
@@ -35,6 +35,8 @@ app.include_router(storage.router, prefix="/storage", tags=["storage"])
 app.include_router(users.router, prefix="/users", tags=["users"])
 app.include_router(settings_api.router, prefix="/settings", tags=["settings"])
 app.include_router(import_airtable.router, prefix="/import", tags=["import"])
+app.include_router(shares.router, prefix="/shares", tags=["shares"])
+app.include_router(shares.public_router, prefix="/public", tags=["public"])
 
 
 @app.get("/health")

@@ -21,7 +21,8 @@ class Settings(BaseSettings):
 
     # AI (OpenRouter)
     openrouter_api_key: str = ""
-    ai_model: str = "google/gemini-2.0-flash-001"
+    # Алиас на актуальную Flash: конкретные версии OpenRouter снимает (2.0-flash сняли → AI молча падал с 404)
+    ai_model: str = "~google/gemini-flash-latest"
     mockup_model: str = "openai/gpt-5-image"
 
     # Web search (SearchAPI.io — Yandex reverse image)

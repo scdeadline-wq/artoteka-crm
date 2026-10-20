@@ -38,7 +38,8 @@ class Artwork(Base):
     inventory_number: Mapped[int] = mapped_column(Integer, unique=True, index=True)
     title: Mapped[str | None] = mapped_column(String(500), default=None)
     artist_id: Mapped[int] = mapped_column(ForeignKey("artists.id"))
-    year: Mapped[int | None] = mapped_column(Integer, default=None)
+    year: Mapped[int | None] = mapped_column(Integer, default=None)  # для фильтров/сортировки (начало интервала)
+    year_text: Mapped[str | None] = mapped_column(String(50), default=None)  # как ввели: "2016-2017", "2000-е"
     edition: Mapped[str | None] = mapped_column(String(100), default=None)
     description: Mapped[str | None] = mapped_column(Text, default=None)
     condition: Mapped[str | None] = mapped_column(Text, default=None)

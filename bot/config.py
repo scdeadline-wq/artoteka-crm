@@ -10,7 +10,7 @@ class BotSettings(BaseSettings):
 
     crm_base_url: str = "http://backend:8000"
     # Публичный URL CRM (для Telegram — он сам качает фото по URL)
-    crm_public_url: str = "http://185.152.94.51:8000"
+    crm_public_url: str = "http://176.124.219.38:8000"
     crm_user_email: str = ""
     crm_user_password: str = ""
 

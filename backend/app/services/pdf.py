@@ -80,7 +80,7 @@ def _fmt_size(artwork: Artwork) -> str:
     w = artwork.width_cm
     h = artwork.height_cm
     if w and h:
-        return f"{w} × {h} см"
+        return f"{h} × {w} см"  # принято: высота × ширина
     if w:
         return f"{w} см (ширина)"
     if h:
@@ -122,7 +122,7 @@ def _html(
     provenance = (artwork.provenance or "") if include_provenance else ""
     edition = artwork.edition or "—"
     condition = artwork.condition or "—"
-    year = artwork.year or "—"
+    year = artwork.year_text or artwork.year or "—"
     cur = artwork.currency
 
     img = _image_data_url(artwork)

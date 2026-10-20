@@ -1,5 +1,5 @@
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, File
 from sqlalchemy import select, func, nullslast
@@ -7,13 +7,16 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from jose import JWTError, jwt
+
+from app.config import settings as app_settings
 from app.database import get_db
 from app.sorting import surname_expr
 from app.auth import get_current_user, is_admin, require_admin
 from app.currency import normalize_currency
 from app.models import Artwork, ArtworkStatus, Artist, Technique, Image, Sale, User
 from app.services.settings import get_default_currency, get_all_settings
-from app.schemas.artwork import ArtworkCreate, ArtworkUpdate, ArtworkOut, ArtworkListOut
+from app.schemas.artwork import ArtworkCreate, ArtworkUpdate, ArtworkOut, ArtworkListOut, split_year
 from fastapi.responses import Response as FastAPIResponse
 from app.services.storage import upload_image, get_image_bytes, delete_object
 from app.services.ai import analyze_artwork_image
@@ -186,6 +189,7 @@ async def list_artworks(
             currency=aw.currency,
             primary_image=primary,
             year=aw.year,
+            year_text=aw.year_text,
             width_cm=float(aw.width_cm) if aw.width_cm is not None else None,
             height_cm=float(aw.height_cm) if aw.height_cm is not None else None,
             room=aw.room,
@@ -231,6 +235,7 @@ async def list_trashed_artworks(
             "sale_price": float(aw.sale_price) if aw.sale_price is not None else None,
             "primary_image": primary,
             "year": aw.year,
+            "year_text": aw.year_text,
             "room": {"id": aw.room.id, "name": aw.room.name, "sort_order": aw.room.sort_order} if aw.room else None,
             "deleted_at": aw.deleted_at.isoformat() if aw.deleted_at else None,
         })
@@ -497,6 +502,7 @@ async def analyze_image(
             "artist": artist_match,
             "artist_name_suggestion": artist_name,
             "year": _parse_year(ai_result.get("year_estimate")),
+            "year_text": split_year(ai_result.get("year_estimate"))[1],
             "techniques": matched_techniques,
             "description": ai_result.get("description"),
             "condition": ai_result.get("condition"),
@@ -538,6 +544,60 @@ async def artwork_pdf(
     """PDF-карточка работы для клиента. Тумблеры (провенанс, цена продажи),
     лого и водяной знак берутся из настроек. Закупочная цена в PDF не выводится —
     это внутренняя информация."""
+    pdf_bytes, inv = await _render_pdf(db, artwork_id, include_provenance, include_sale_price)
+    return FastAPIResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="artoteka_{inv}.pdf"'},
+    )
+
+
+PDF_LINK_TTL = timedelta(minutes=15)
+
+
+@router.post("/{artwork_id}/pdf-link/")
+async def artwork_pdf_link(
+    artwork_id: int,
+    include_provenance: bool = True,
+    include_sale_price: bool = True,
+    _: User = Depends(get_current_user),
+):
+    """Короткоживущая ссылка на PDF без заголовка Authorization.
+
+    С телефона (iOS Safari, браузер Telegram) скачивание blob'а из fetch не работает —
+    фронт открывает PDF обычной ссылкой, а доступ проверяется подписью в токене.
+    """
+    token = jwt.encode(
+        {
+            "pdf": artwork_id,
+            "prov": include_provenance,
+            "price": include_sale_price,
+            "exp": datetime.now(timezone.utc) + PDF_LINK_TTL,
+        },
+        app_settings.jwt_secret,
+        algorithm=app_settings.jwt_algorithm,
+    )
+    return {"url": f"/artworks/pdf-file/{token}/"}
+
+
+@router.get("/pdf-file/{token}/")
+async def artwork_pdf_by_link(token: str, db: AsyncSession = Depends(get_db)):
+    try:
+        claims = jwt.decode(token, app_settings.jwt_secret, algorithms=[app_settings.jwt_algorithm])
+        artwork_id = int(claims["pdf"])
+    except (JWTError, KeyError, ValueError, TypeError):
+        raise HTTPException(status_code=403, detail="Ссылка на PDF устарела — сформируйте заново")
+    pdf_bytes, inv = await _render_pdf(db, artwork_id, bool(claims.get("prov", True)), bool(claims.get("price", True)))
+    return FastAPIResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="artoteka_{inv}.pdf"'},
+    )
+
+
+async def _render_pdf(
+    db: AsyncSession, artwork_id: int, include_provenance: bool, include_sale_price: bool
+) -> tuple[bytes, int]:
     stmt = (
         select(Artwork)
         .options(
@@ -570,12 +630,7 @@ async def artwork_pdf(
         logo_url=cfg.get("pdf_logo_url") or None,
         watermark_text=watermark,
     )
-    inv = artwork.inventory_number
-    return FastAPIResponse(
-        content=pdf_bytes,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="artoteka_{inv}.pdf"'},
-    )
+    return pdf_bytes, artwork.inventory_number
 
 
 @router.patch("/{artwork_id}/status/")

@@ -93,14 +93,14 @@ async def menu_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if kind == "framed":
         await query.edit_message_reply_markup(reply_markup=None)
-        results = await crm.search_artworks_advanced(is_framed=True, limit=50)
-        await send_artwork_results(query.message, results, is_admin=is_admin(update))
+        results = await crm.search_artworks_advanced(is_framed=True, limit=200)
+        await send_artwork_results(query.message, results, is_admin=is_admin(update), context=context)
         return ConversationHandler.END
 
     if kind == "available":
         await query.edit_message_reply_markup(reply_markup=None)
-        results = await crm.search_artworks(status="for_sale", limit=50)
-        await send_artwork_results(query.message, results, is_admin=is_admin(update))
+        results = await crm.search_artworks(status="for_sale", limit=200)
+        await send_artwork_results(query.message, results, is_admin=is_admin(update), context=context)
         return ConversationHandler.END
 
     if kind == "tag":
@@ -146,8 +146,8 @@ async def technique_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     except ValueError:
         return MENU
     await query.edit_message_reply_markup(reply_markup=None)
-    results = await crm.search_artworks_advanced(technique_id=tid, limit=50)
-    await send_artwork_results(query.message, results, is_admin=is_admin(update))
+    results = await crm.search_artworks_advanced(technique_id=tid, limit=200)
+    await send_artwork_results(query.message, results, is_admin=is_admin(update), context=context)
     return ConversationHandler.END
 
 
@@ -159,7 +159,7 @@ async def receive_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     if kind == "tag":
-        results = await crm.search_artworks_advanced(tag=text.lstrip("#"), limit=50)
+        results = await crm.search_artworks_advanced(tag=text.lstrip("#"), limit=200)
     elif kind == "price":
         price_from, price_to = _parse_price_range(text)
         if price_from is None and price_to is None:
@@ -168,13 +168,13 @@ async def receive_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
         results = await crm.search_artworks_advanced(
             price_from=price_from,
             price_to=price_to,
-            limit=50,
+            limit=200,
         )
     else:
         await update.message.reply_text("Отмена")
         return ConversationHandler.END
 
-    await send_artwork_results(update.message, results, is_admin=is_admin(update))
+    await send_artwork_results(update.message, results, is_admin=is_admin(update), context=context)
     return ConversationHandler.END
 
 

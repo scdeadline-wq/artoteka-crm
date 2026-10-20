@@ -72,7 +72,9 @@ async def analyze_artwork_image(image_bytes: bytes, content_type: str = "image/j
                         ],
                     },
                 ],
-                "max_tokens": 1000,
+                # Новые Flash «думают» — без low reasoning съедают лимит и JSON обрезается
+                "reasoning": {"effort": "low"},
+                "max_tokens": 3000,
             },
         )
         response.raise_for_status()

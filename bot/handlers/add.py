@@ -53,8 +53,8 @@ def _prefill_from_analysis(analysis: dict) -> dict:
     if artist_name:
         prefill["artist_name"] = artist_name
 
-    if suggested.get("year"):
-        prefill["year"] = suggested["year"]
+    if suggested.get("year_text") or suggested.get("year"):
+        prefill["year"] = suggested.get("year_text") or suggested["year"]
 
     # Техники: сматченные со справочником, иначе — как назвала AI
     technique_names = [t["name"] for t in (suggested.get("techniques") or []) if t.get("name")]
@@ -87,7 +87,7 @@ def _format_recognized(prefill: dict) -> str:
     if prefill.get("style_period"):
         lines.append(f"Стиль: {prefill['style_period']}")
     if prefill.get("width_cm") and prefill.get("height_cm"):
-        lines.append(f"Размер: {prefill['width_cm']} × {prefill['height_cm']} см")
+        lines.append(f"Размер: {prefill['height_cm']} × {prefill['width_cm']} см")
     if prefill.get("description"):
         lines.append(f"Описание: {prefill['description']}")
     return "\n".join(lines)
@@ -228,7 +228,7 @@ def _format_preview(parsed: dict) -> str:
     if parsed.get("style_period"):
         msg += f"Стиль: {parsed['style_period']}\n"
     if parsed.get("width_cm") and parsed.get("height_cm"):
-        msg += f"Размер: {parsed['width_cm']} × {parsed['height_cm']} см\n"
+        msg += f"Размер: {parsed['height_cm']} × {parsed['width_cm']} см\n"
     if parsed.get("sale_price"):
         msg += f"Цена: {int(float(parsed['sale_price'])):,}\n".replace(",", " ")
     if parsed.get("edition"):
@@ -294,9 +294,9 @@ async def _do_create(chat_id: int, context: ContextTypes.DEFAULT_TYPE) -> int:
 FIELD_PROMPTS = {
     "title": "Введи новое название (или «-» чтобы очистить):",
     "artist_name": "Введи имя художника:",
-    "year": "Введи год (число):",
+    "year": "Введи год: 1967, интервал 2016-2017 или «2000-е»:",
     "technique": "Введи технику (например, «Холст, масло»):",
-    "size": "Введи размер: «ширина x высота» в см (например, 60x80):",
+    "size": "Введи размер: «высота x ширина» в см (например, 80x60):",
     "sale_price": "Введи цену (число):",
 }
 
@@ -371,15 +371,14 @@ def _apply_field(parsed: dict, field: str, value: str) -> str | None:
         import re
         m = re.search(r"(\d+(?:[,.]\d+)?)\s*[xхХ×*]\s*(\d+(?:[,.]\d+)?)", value)
         if not m:
-            return "Не понял размер. Формат: 60x80 или 60 x 80"
-        parsed["width_cm"] = float(m.group(1).replace(",", "."))
-        parsed["height_cm"] = float(m.group(2).replace(",", "."))
+            return "Не понял размер. Формат (высота x ширина): 80x60 или 80 x 60"
+        parsed["height_cm"] = float(m.group(1).replace(",", "."))
+        parsed["width_cm"] = float(m.group(2).replace(",", "."))
         return None
     if field == "year":
-        digits = "".join(c for c in value if c.isdigit())
-        if not digits:
-            return "Год должен быть числом."
-        parsed["year"] = int(digits[:4])
+        if len(value) > 50:
+            return "Слишком длинно. Например: 1967, 2016-2017 или 2000-е"
+        parsed["year"] = value
         return None
     if field == "sale_price":
         digits = "".join(c for c in value if c.isdigit())
@@ -487,7 +486,8 @@ def _build_artwork_payload(
     payload = {
         "title": parsed.get("title"),
         "artist_id": artist_id,
-        "year": int(parsed["year"]) if parsed.get("year") else None,
+        # Год — текстом: backend сам выведет число для фильтров ("2016-2017" → 2016)
+        "year_text": str(parsed["year"]) if parsed.get("year") else None,
         "edition": parsed.get("edition"),
         "description": parsed.get("description") or parsed.get("notes"),
         "style_period": parsed.get("style_period"),

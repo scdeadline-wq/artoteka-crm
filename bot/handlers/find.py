@@ -19,23 +19,27 @@ ASK_QUERY = 0
 STATUS_FILTERS = {"for_sale", "sold", "reserved", "draft", "review", "collection", "on_exhibition"}
 
 
-async def _do_search(update: Update, query: str) -> None:
+ALL_WORDS = {"все", "всё", "all", "*"}
+
+
+async def _do_search(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str) -> None:
     admin = is_admin(update)
     q = query.strip()
 
     if not q:
-        all_artworks = await crm.search_artworks(limit=200)
         await update.message.reply_text(
-            f"В базе {len(all_artworks)} работ. Уточни запрос: номер, название, художник или статус."
+            "Уточни запрос: номер, название, художник или статус. Весь каталог — «все»."
         )
         return
 
-    if q.lower() in STATUS_FILTERS:
+    if q.lower() in ALL_WORDS:
+        filtered = await crm.list_all_artworks()
+    elif q.lower() in STATUS_FILTERS:
         filtered = await crm.search_artworks(status=q.lower(), limit=200)
     else:
         filtered = await crm.search_artworks(query=q, limit=200)
 
-    await send_artwork_results(update.message, filtered, is_admin=admin)
+    await send_artwork_results(update.message, filtered, is_admin=admin, context=context)
 
 
 @require_whitelist
@@ -43,14 +47,14 @@ async def find_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     args = context.args or []
     query = " ".join(args).strip()
     if query:
-        await _do_search(update, query)
+        await _do_search(update, context, query)
         return ConversationHandler.END
-    await update.message.reply_text("Что искать? (номер, название, художник или статус)")
+    await update.message.reply_text("Что искать? (номер, название, художник или статус; «все» — весь каталог)")
     return ASK_QUERY
 
 
 async def receive_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await _do_search(update, update.message.text or "")
+    await _do_search(update, context, update.message.text or "")
     return ConversationHandler.END
 
 

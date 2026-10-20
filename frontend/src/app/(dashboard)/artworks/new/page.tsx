@@ -17,6 +17,7 @@ interface AISuggestion {
   artist: { id: number; name_ru: string; name_en: string | null } | null;
   artist_name_suggestion: string | null;
   year: number | null;
+  year_text: string | null;
   techniques: { id: number; name: string }[];
   description: string | null;
   condition: string | null;
@@ -116,7 +117,7 @@ export default function NewArtworkPage() {
           !suggestion.artist && suggestion.artist_name_suggestion
             ? suggestion.artist_name_suggestion
             : "",
-        year: suggestion.year ? String(suggestion.year) : "",
+        year: suggestion.year_text || (suggestion.year ? String(suggestion.year) : ""),
         description: suggestion.description || "",
         condition: suggestion.condition || "",
         style_period: suggestion.style_period || "",
@@ -182,7 +183,8 @@ export default function NewArtworkPage() {
       const payload: Record<string, unknown> = {
         title: form.title || null,
         artist_id: artistId,
-        year: form.year ? Number(form.year) : null,
+        // Год текстом: backend сам выведет число для фильтров ("2016-2017" → 2016)
+        year_text: form.year.trim() || null,
         edition: form.edition || null,
         description: form.description || null,
         condition: form.condition || null,
@@ -572,10 +574,11 @@ export default function NewArtworkPage() {
             <div>
               <label className="mb-1 block text-xs text-gray-500">Год</label>
               <input
-                type="number"
                 value={form.year}
                 onChange={(e) => setForm({ ...form, year: e.target.value })}
                 className="w-full rounded-lg border px-3 py-2 text-sm"
+                placeholder="1967, 2016-2017, 2000-е"
+                maxLength={50}
               />
             </div>
             <div>
@@ -605,22 +608,6 @@ export default function NewArtworkPage() {
           <div className="mb-4 grid grid-cols-2 gap-4">
             <div>
               <label className="mb-1 block text-xs text-gray-500">
-                Ширина (см)
-                {form.width_cm && <span className="ml-1 text-amber-600">AI</span>}
-              </label>
-              <input
-                type="number"
-                step="0.1"
-                value={form.width_cm}
-                onChange={(e) =>
-                  setForm({ ...form, width_cm: e.target.value })
-                }
-                className="w-full rounded-lg border px-3 py-2 text-sm"
-                placeholder="напр. 60"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs text-gray-500">
                 Высота (см)
                 {form.height_cm && <span className="ml-1 text-amber-600">AI</span>}
               </label>
@@ -633,6 +620,22 @@ export default function NewArtworkPage() {
                 }
                 className="w-full rounded-lg border px-3 py-2 text-sm"
                 placeholder="напр. 80"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">
+                Ширина (см)
+                {form.width_cm && <span className="ml-1 text-amber-600">AI</span>}
+              </label>
+              <input
+                type="number"
+                step="0.1"
+                value={form.width_cm}
+                onChange={(e) =>
+                  setForm({ ...form, width_cm: e.target.value })
+                }
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+                placeholder="напр. 60"
               />
             </div>
           </div>

@@ -188,7 +188,7 @@ curl https://openrouter.ai/api/v1/chat/completions \
 | `black-forest-labs/flux.2-pro` | ~$0.03 | топ |
 
 ### Vision/анализ (карточки произведений)
-Модель: `google/gemini-2.0-flash-001` — дешёвый, быстрый, хорошо определяет технику/стиль.
+Модель: `~google/gemini-flash-latest` (алиас на актуальную Flash; `gemini-2.0-flash-001` сняли с OpenRouter, AI молча падал с 404). На проде проверить, что `AI_MODEL` в `.env` не переопределяет на старую.
 
 ### Доступные модели с image output
 ```bash

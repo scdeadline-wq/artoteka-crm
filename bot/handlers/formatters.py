@@ -46,9 +46,10 @@ STATUS_LABEL = {
 
 
 def status_button_keyboard(artwork_id: int) -> InlineKeyboardMarkup:
-    """Кнопка «Изменить статус» под карточкой работы (обрабатывается в find.py)."""
+    """Кнопки под карточкой: статус (find.py) и PDF (results.py)."""
     return InlineKeyboardMarkup([[
         InlineKeyboardButton("🔄 Изменить статус", callback_data=f"chst:{artwork_id}"),
+        InlineKeyboardButton("📄 PDF", callback_data=f"pdf:{artwork_id}"),
     ]])
 
 
@@ -76,11 +77,11 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
     title = a.get("title") or "(без названия)"
     artist = a.get("artist") or {}
     artist_name = artist.get("name_ru") or artist.get("name_en") or "—"
-    year = a.get("year") or "—"
+    year = a.get("year_text") or a.get("year") or "—"
     techs = ", ".join(t.get("name", "") for t in (a.get("techniques") or [])) or "—"
     w = a.get("width_cm")
     h = a.get("height_cm")
-    size = f"{w} × {h} см" if w and h else "—"
+    size = f"{h} × {w} см" if w and h else "—"  # высота × ширина
     is_framed = a.get("is_framed")
     if is_framed:
         size = f"{size} · в раме" if size != "—" else "В раме"
@@ -143,20 +144,77 @@ def format_artwork_card(a: dict, *, is_admin: bool = False) -> str:
     return "\n".join(lines)
 
 
+CARDS_PER_PAGE = 5
+LIST_PAGE_SIZE = 20
+MAX_STORED_RESULTS = 5  # сколько последних поисков помним на пользователя (для «Ещё»/«Списком»)
+
+
+def short_row(a: dict) -> dict:
+    """Минимум полей работы для списка — храним в user_data, без фото и описаний."""
+    return {
+        "id": a["id"],
+        "inv": a.get("inventory_number"),
+        "artist": (a.get("artist") or {}).get("name_ru"),
+        "title": a.get("title"),
+        "year": a.get("year_text") or a.get("year"),
+        "status": a.get("status"),
+        "price": a.get("sale_price"),
+        "currency": a.get("currency"),
+    }
+
+
+def save_results(context, artworks: list[dict]) -> str:
+    store: dict = context.user_data.setdefault("results", {})
+    key = str(context.user_data.get("results_seq", 0) + 1)
+    context.user_data["results_seq"] = int(key)
+    store[key] = [short_row(a) for a in artworks]
+    for old in list(store)[:-MAX_STORED_RESULTS]:
+        store.pop(old, None)
+    return key
+
+
+def more_keyboard(key: str, shown: int, total: int) -> InlineKeyboardMarkup:
+    row = []
+    if shown < total:
+        row.append(InlineKeyboardButton(f"▶️ Ещё {min(CARDS_PER_PAGE, total - shown)}", callback_data=f"rmore:{key}:{shown}"))
+    row.append(InlineKeyboardButton(f"📋 Списком все {total}", callback_data=f"rlist:{key}:0"))
+    return InlineKeyboardMarkup([row])
+
+
 async def send_artwork_results(
     message: Message,
     artworks: list[dict],
     *,
     is_admin: bool,
-    limit: int = 5,
+    context=None,
 ) -> None:
-    """Печатает в чат до `limit` карточек с фото. Без результатов — пишет «Ничего не нашёл»."""
+    """Карточки с фото по 5 штук; если найдено больше — кнопки «Ещё» и «Списком все».
+
+    Без context (некуда сохранить результаты) — просто первые 5, как раньше.
+    """
     if not artworks:
         await message.reply_text("Ничего не нашёл")
         return
-    if len(artworks) > limit:
-        await message.reply_text(f"Нашёл {len(artworks)} работ — показываю первые {limit}:")
-        artworks = artworks[:limit]
+    total = len(artworks)
+    if total <= CARDS_PER_PAGE:
+        await send_artwork_cards(message, artworks, is_admin=is_admin)
+        return
+    if context is None:
+        await message.reply_text(f"Нашёл {total} работ — показываю первые {CARDS_PER_PAGE}:")
+        await send_artwork_cards(message, artworks[:CARDS_PER_PAGE], is_admin=is_admin)
+        return
+    key = save_results(context, artworks)
+    # Сразу даём «Списком» — чтобы не листать карточки, если нужен обзор
+    await message.reply_text(f"Нашёл {total} работ.", reply_markup=more_keyboard(key, total, total))
+    await send_artwork_cards(message, artworks[:CARDS_PER_PAGE], is_admin=is_admin)
+    await message.reply_text(
+        f"Показаны 1–{CARDS_PER_PAGE} из {total}", reply_markup=more_keyboard(key, CARDS_PER_PAGE, total)
+    )
+
+
+async def send_artwork_cards(message: Message, artworks: list[dict], *, is_admin: bool) -> None:
+    """Печатает в чат карточки работ с фото."""
+
     for artwork in artworks:
         full = await crm.get_artwork(artwork["id"])
         caption = format_artwork_card(full, is_admin=is_admin)

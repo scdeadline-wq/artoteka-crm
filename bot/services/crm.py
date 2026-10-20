@@ -74,6 +74,28 @@ class CRMClient:
         response.raise_for_status()
         return response.json()
 
+    async def list_all_artworks(self, page_size: int = 200) -> list[dict[str, Any]]:
+        """Весь каталог: API отдаёт максимум 200 за раз — листаем offset'ом."""
+        out: list[dict[str, Any]] = []
+        while True:
+            response = await self._request(
+                "GET", "/artworks/", params={"limit": page_size, "offset": len(out), "sort": "last_name"}
+            )
+            response.raise_for_status()
+            batch = response.json()
+            out += batch
+            if len(batch) < page_size:
+                return out
+
+    async def get_artwork_pdf(self, artwork_id: int, include_sale_price: bool = True) -> bytes:
+        response = await self._request(
+            "GET",
+            f"/artworks/{artwork_id}/pdf/",
+            params={"include_sale_price": str(include_sale_price).lower(), "include_provenance": "true"},
+        )
+        response.raise_for_status()
+        return response.content
+
     async def get_artwork(self, artwork_id: int) -> dict[str, Any]:
         response = await self._request("GET", f"/artworks/{artwork_id}/")
         response.raise_for_status()

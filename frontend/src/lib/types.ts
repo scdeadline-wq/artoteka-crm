@@ -40,6 +40,7 @@ export interface Artwork {
   title: string | null;
   artist: Artist;
   year: number | null;
+  year_text: string | null;
   edition: string | null;
   description: string | null;
   condition: string | null;
@@ -84,6 +85,7 @@ export interface ArtworkListItem {
   currency: string;
   primary_image: string | null;
   year: number | null;
+  year_text: string | null;
   room: Room | null;
   is_framed: boolean;
   tags: string[];
@@ -182,3 +184,39 @@ export const CLIENT_TYPE_LABELS: Record<string, string> = {
   dealer: "Дилер",
   referral: "Реферал",
 };
+
+// Публичная ссылка на подборку (по художникам и/или тегам)
+export interface ShareLink {
+  id: number;
+  token: string;
+  title: string;
+  artist_ids: number[];
+  tags: string[];
+  only_available: boolean;
+  show_prices: boolean;
+  is_active: boolean;
+  created_at: string;
+  artworks_count: number;
+}
+
+export interface PublicArtwork {
+  id: number;
+  title: string | null;
+  artist_name: string | null;
+  year: string | null;
+  height_cm: number | null;
+  width_cm: number | null;
+  techniques: string[];
+  is_framed: boolean;
+  description: string | null;
+  images: string[];
+  is_reserved: boolean;
+  sale_price: string | null;
+  currency: string | null;
+}
+
+export interface PublicShare {
+  title: string;
+  show_prices: boolean;
+  artworks: PublicArtwork[];
+}

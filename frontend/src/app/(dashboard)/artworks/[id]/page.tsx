@@ -50,6 +50,19 @@ export default function ArtworkDetailPage({
   const [showExhModal, setShowExhModal] = useState(false);
   const [showPdfModal, setShowPdfModal] = useState(false);
   const [pdfOpts, setPdfOpts] = useState({ provenance: true, salePrice: true });
+  // PDF качаем обычной ссылкой с подписанным токеном: blob из fetch не сохраняется
+  // на телефоне (iOS Safari, браузер Telegram). Ссылка живёт 15 минут.
+  const { data: pdfLink, isFetching: pdfLinkLoading, isError: pdfLinkError } = useQuery({
+    queryKey: ["pdf-link", id, pdfOpts.provenance, pdfOpts.salePrice],
+    queryFn: () =>
+      api
+        .post<{ url: string }>(`/artworks/${id}/pdf-link/`, null, {
+          params: { include_provenance: pdfOpts.provenance, include_sale_price: pdfOpts.salePrice },
+        })
+        .then((r) => `${api.defaults.baseURL}${r.data.url}`),
+    enabled: showPdfModal,
+    staleTime: 10 * 60_000,
+  });
   const [newTech, setNewTech] = useState("");
   const [manualArtist, setManualArtist] = useState(false);
   const [errMsg, setErrMsg] = useState<string | null>(null);
@@ -113,7 +126,7 @@ export default function ArtworkDetailPage({
       title: artwork.title || "",
       artist_id: artwork.artist.id,
       new_artist_name: "",
-      year: artwork.year || "",
+      year: artwork.year_text || artwork.year || "",
       edition: artwork.edition || "",
       description: artwork.description || "",
       condition: artwork.condition || "",
@@ -166,7 +179,7 @@ export default function ArtworkDetailPage({
       const tagsRaw = (form.tags as string) || "";
       const payload: Record<string, unknown> = {
         artist_id: artistId,
-        year: form.year ? Number(form.year) : null,
+        year_text: String(form.year ?? "").trim() || null,
         width_cm: form.width_cm ? Number(form.width_cm) : null,
         height_cm: form.height_cm ? Number(form.height_cm) : null,
         sale_price: form.sale_price ? Number(form.sale_price) : null,
@@ -533,7 +546,7 @@ export default function ArtworkDetailPage({
                 </h1>
                 <p className="mt-1 text-lg text-gray-700">
                   {artwork.title || "Без названия"}
-                  {artwork.year ? `, ${artwork.year}` : ""}
+                  {artwork.year_text || artwork.year ? `, ${artwork.year_text || artwork.year}` : ""}
                 </p>
               </>
             )}
@@ -717,7 +730,7 @@ export default function ArtworkDetailPage({
           <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-3">
             <div>
               <label className="mb-1 block text-xs text-gray-500">Год</label>
-              <input type="number" value={form.year as string} onChange={(e) => setForm({ ...form, year: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
+              <input value={form.year as string} onChange={(e) => setForm({ ...form, year: e.target.value })} placeholder="1967, 2016-2017, 2000-е" maxLength={50} className="w-full rounded border px-2 py-1.5 text-sm" />
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Тираж</label>
@@ -728,12 +741,12 @@ export default function ArtworkDetailPage({
               <input value={form.condition as string} onChange={(e) => setForm({ ...form, condition: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
             </div>
             <div>
-              <label className="mb-1 block text-xs text-gray-500">Ширина (см)</label>
-              <input type="number" value={form.width_cm as string} onChange={(e) => setForm({ ...form, width_cm: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
-            </div>
-            <div>
               <label className="mb-1 block text-xs text-gray-500">Высота (см)</label>
               <input type="number" value={form.height_cm as string} onChange={(e) => setForm({ ...form, height_cm: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs text-gray-500">Ширина (см)</label>
+              <input type="number" value={form.width_cm as string} onChange={(e) => setForm({ ...form, width_cm: e.target.value })} className="w-full rounded border px-2 py-1.5 text-sm" />
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Склад / адрес</label>
@@ -886,7 +899,7 @@ export default function ArtworkDetailPage({
               <div>
                 <p className="text-gray-500">Размер</p>
                 <p className="font-medium">
-                  {widthCm && heightCm ? `${widthCm} × ${heightCm} см` : widthCm ? `${widthCm} см (ш)` : `${heightCm} см (в)`}
+                  {widthCm && heightCm ? `${heightCm} × ${widthCm} см` : widthCm ? `${widthCm} см (ш)` : `${heightCm} см (в)`}
                 </p>
               </div>
             )}
@@ -987,30 +1000,19 @@ export default function ArtworkDetailPage({
               Показать цену продажи
             </label>
             <div className="mt-4 flex gap-3">
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await api.get(`/artworks/${id}/pdf/`, {
-                      responseType: "blob",
-                      params: { include_provenance: pdfOpts.provenance, include_sale_price: pdfOpts.salePrice },
-                    });
-                    const url = URL.createObjectURL(res.data as Blob);
-                    const a = document.createElement("a");
-                    a.href = url;
-                    a.download = `artoteka_${artwork.inventory_number}.pdf`;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
-                    setTimeout(() => URL.revokeObjectURL(url), 60_000);
-                    setShowPdfModal(false);
-                  } catch {
-                    alert("Не удалось сформировать PDF");
-                  }
+              <a
+                href={pdfLink}
+                aria-disabled={!pdfLink}
+                onClick={(e) => {
+                  if (!pdfLink) e.preventDefault();
+                  else setTimeout(() => setShowPdfModal(false), 300);
                 }}
-                className="flex-1 rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800"
+                className={`flex-1 rounded-lg bg-gray-900 px-4 py-2 text-center text-sm font-medium text-white hover:bg-gray-800 ${
+                  pdfLink && !pdfLinkLoading ? "" : "pointer-events-none opacity-50"
+                }`}
               >
-                Скачать PDF
-              </button>
+                {pdfLinkError ? "Ошибка, откройте заново" : pdfLink && !pdfLinkLoading ? "Скачать PDF" : "Готовлю…"}
+              </a>
               <button onClick={() => setShowPdfModal(false)} className="rounded-lg border px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">
                 Отмена
               </button>

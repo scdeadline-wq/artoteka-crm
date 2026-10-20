@@ -1,7 +1,8 @@
+import re
 from datetime import date, datetime
 from decimal import Decimal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, model_validator
 
 from app.schemas.artist import ArtistOut
 from app.schemas.technique import TechniqueOut
@@ -19,7 +20,38 @@ class ImageOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
-class ArtworkCreate(BaseModel):
+_YEAR_RE = re.compile(r"(?<!\d)(1\d{3}|20\d{2})(?!\d)")
+
+
+def split_year(text: str | None) -> tuple[int | None, str | None]:
+    """Свободный ввод года → (год для фильтров/сортировки, текст для показа).
+
+    "1967" → (1967, None); "2016-2017" → (2016, "2016-2017"); "2000-е" → (2000, "2000-е");
+    "конец XIX в." → (None, "конец XIX в."). Чистое число в тексте не храним.
+    """
+    text = " ".join((text or "").split())
+    if not text:
+        return None, None
+    if text.isdigit():
+        return int(text), None
+    m = _YEAR_RE.search(text)
+    return (int(m.group(1)) if m else None), text[:50]
+
+
+class _YearTextMixin(BaseModel):
+    year_text: str | None = None
+
+    @model_validator(mode="after")
+    def _apply_year_text(self):
+        # year_text приоритетнее year: из него же выводим числовой год
+        if "year_text" in self.model_fields_set:
+            self.year, self.year_text = split_year(self.year_text)
+        elif "year" in self.model_fields_set:
+            self.year_text = None  # пришёл только числовой год — старый текст устарел
+        return self
+
+
+class ArtworkCreate(_YearTextMixin):
     title: str | None = None
     artist_id: int
     year: int | None = None
@@ -45,7 +77,7 @@ class ArtworkCreate(BaseModel):
     technique_ids: list[int] = []
 
 
-class ArtworkUpdate(BaseModel):
+class ArtworkUpdate(_YearTextMixin):
     title: str | None = None
     artist_id: int | None = None
     year: int | None = None
@@ -83,6 +115,7 @@ class ArtworkOut(BaseModel):
     title: str | None
     artist: ArtistOut
     year: int | None
+    year_text: str | None = None
     edition: str | None
     description: str | None
     condition: str | None
@@ -127,6 +160,7 @@ class ArtworkListOut(BaseModel):
     currency: str = "USD"
     primary_image: str | None = None
     year: int | None
+    year_text: str | None = None
     width_cm: float | None = None
     height_cm: float | None = None
     room: RoomOut | None = None

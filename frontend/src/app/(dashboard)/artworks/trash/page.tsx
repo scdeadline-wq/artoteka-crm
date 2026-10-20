@@ -18,6 +18,7 @@ interface TrashedArtwork {
   sale_price: number | null;
   primary_image: string | null;
   year: number | null;
+  year_text: string | null;
   room: { id: number; name: string; sort_order: number } | null;
   deleted_at: string | null;
 }
@@ -106,7 +107,7 @@ export default function TrashPage() {
                 <p className="text-xs text-gray-500">
                   №{aw.inventory_number}
                   {aw.room ? ` · Комната: ${aw.room.name}` : ""}
-                  {aw.year ? ` · ${aw.year}` : ""}
+                  {aw.year_text || aw.year ? ` · ${aw.year_text || aw.year}` : ""}
                 </p>
                 {aw.deleted_at && (
                   <p className="mt-0.5 text-xs text-gray-400">
