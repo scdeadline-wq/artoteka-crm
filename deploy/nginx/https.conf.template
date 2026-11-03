@@ -64,6 +64,21 @@ server {
     }
 }
 
+# --- Старые адреса (прошлые домены) → редирект на текущий -------------------
+# LEGACY_DOMAINS — через пробел; заглушка legacy.invalid, если старых нет.
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${LEGACY_DOMAINS};
+
+    ssl_certificate     /etc/letsencrypt/live/artoteka/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/artoteka/privkey.pem;
+
+    location / {
+        return 301 https://${DOMAIN}$request_uri;
+    }
+}
+
 # --- Frontend ---------------------------------------------------------------
 server {
     listen 443 ssl;

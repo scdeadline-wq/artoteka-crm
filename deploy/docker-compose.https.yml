@@ -17,6 +17,7 @@ services:
     environment:
       DOMAIN: ${DOMAIN}
       API_DOMAIN: ${API_DOMAIN}
+      LEGACY_DOMAINS: ${LEGACY_DOMAINS:-legacy.invalid}
     volumes:
       - ./nginx/https.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./certbot/conf:/etc/letsencrypt:ro

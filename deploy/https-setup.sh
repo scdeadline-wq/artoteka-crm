@@ -4,6 +4,8 @@
 # Использование (на сервере, в /opt/artoteka-crm):
 #   ./deploy/https-setup.sh 176-124-219-38.sslip.io          # API на api.<домен>
 #   ./deploy/https-setup.sh artoteka.ru crm-api.artoteka.ru  # API на своём имени
+#   ./deploy/https-setup.sh crm.x.ru crm-api.x.ru old.sslip.io  # + старые адреса,
+#        они остаются в сертификате и редиректят на новый домен
 #
 # Что делает:
 #   1. Прописывает в deploy/.env: DOMAIN, API_DOMAIN, PUBLIC_API_URL,
@@ -22,6 +24,8 @@ cd "$(dirname "$0")/.."
 
 DOMAIN="${1:?Укажи домен: ./deploy/https-setup.sh <домен> [api-домен]}"
 API_DOMAIN="${2:-api.$DOMAIN}"
+shift $(( $# < 2 ? $# : 2 ))
+LEGACY="$*"   # старые домены через пробел (могут быть пустыми)
 ENV_FILE=deploy/.env
 CERT_NAME=artoteka
 CERT_DIR=deploy/certbot/conf
@@ -37,7 +41,7 @@ if [ "$(printf '%s\n2.24.0\n' "$COMPOSE_VER" | sort -V | head -1)" != "2.24.0" ]
 fi
 
 SERVER_IP="$(curl -s4 --max-time 10 https://ifconfig.me || true)"
-for name in "$DOMAIN" "$API_DOMAIN"; do
+for name in "$DOMAIN" "$API_DOMAIN" $LEGACY; do
   resolved="$(getent ahostsv4 "$name" | awk 'NR==1{print $1}')"
   if [ -z "$resolved" ]; then
     echo "❌ $name не резолвится. Проверь A-запись."; exit 1
@@ -67,6 +71,7 @@ set_env() {
 
 set_env DOMAIN "$DOMAIN"
 set_env API_DOMAIN "$API_DOMAIN"
+set_env LEGACY_DOMAINS "$LEGACY"
 set_env PUBLIC_API_URL "https://$API_DOMAIN"
 set_env PUBLIC_BASE_URL "https://$API_DOMAIN"
 set_env CORS_ORIGINS "https://$DOMAIN,http://localhost:3000"
@@ -83,7 +88,10 @@ cert_covers() {
   local sans
   sans="$(openssl x509 -in "$pem" -noout -ext subjectAltName 2>/dev/null || true)"
   sans="$(tr -d ' \n' <<<"$sans"),"   # "DNS:a,DNS:b," — чтобы сравнивать целиком
-  grep -qF "DNS:$DOMAIN," <<<"$sans" && grep -qF "DNS:$API_DOMAIN," <<<"$sans"
+  local n
+  for n in "$DOMAIN" "$API_DOMAIN" $LEGACY; do
+    grep -qF "DNS:$n," <<<"$sans" || return 1
+  done
 }
 
 if cert_covers; then
@@ -103,7 +111,7 @@ else
     certbot/certbot:v2.11.0 certonly --standalone \
       --non-interactive --agree-tos --register-unsafely-without-email \
       --cert-name "$CERT_NAME" \
-      -d "$DOMAIN" -d "$API_DOMAIN"
+      -d "$DOMAIN" -d "$API_DOMAIN" $(for n in $LEGACY; do printf -- "-d %s " "$n"; done)
 
   trap - ERR
   echo "    сертификат выпущен ✓"
