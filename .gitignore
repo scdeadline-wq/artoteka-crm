@@ -42,3 +42,5 @@ docs/journal/
 deploy/.last_deploy_sha
 deploy/.last_alembic_rev
 deploy/backups/
+deploy/certbot/
+deploy/.env.bak-*

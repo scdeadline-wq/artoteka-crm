@@ -26,6 +26,10 @@ set -Eeuo pipefail
 cd "$(dirname "$0")/.."
 
 COMPOSE="docker compose -f deploy/docker-compose.vps.yml"
+# HTTPS-надстройка (nginx + certbot), если включена через deploy/https-setup.sh
+if grep -q '^DOMAIN=.' deploy/.env 2>/dev/null && [ -f deploy/docker-compose.https.yml ]; then
+  COMPOSE="$COMPOSE -f deploy/docker-compose.https.yml"
+fi
 TS="$(date +%Y-%m-%d_%H-%M-%S)"
 
 # --- Telegram-уведомления ----------------------------------------------------
