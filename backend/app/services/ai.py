@@ -1,9 +1,9 @@
-"""AI-анализ фото произведений искусства через OpenRouter."""
+"""AI-анализ фото произведений искусства (MixRoute, см. services/llm.py)."""
 import base64
 import json
-import httpx
 
 from app.config import settings
+from app.services import llm
 from app.services.web_search import search_artwork_by_image
 
 SYSTEM_PROMPT = """Ты — ведущий искусствовед, куратор и оценщик с 30-летним стажем.
@@ -35,56 +35,36 @@ async def analyze_artwork_image(image_bytes: bytes, content_type: str = "image/j
     """
     from app.services.image_utils import normalize_image
 
-    if not settings.openrouter_api_key:
-        return {"error": "OpenRouter API key not configured"}
+    if not llm.configured():
+        return {"error": "AI API key not configured"}
 
     # Реверс-поиск Яндекса делаем по ОРИГИНАЛЬНЫМ байтам — perceptual hash
     # чувствителен к перепаковке, после normalize_image Яндекс не находит совпадений
     search_results = await search_artwork_by_image(image_bytes)
 
-    # Нормализуем формат (HEIC, WEBP → JPEG) для Gemini
+    # Нормализуем формат (HEIC, WEBP → JPEG) для модели
     image_bytes = normalize_image(image_bytes)
 
     base64_image = base64.b64encode(image_bytes).decode("utf-8")
     user_text = _build_user_prompt(search_results)
 
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {settings.openrouter_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": settings.ai_model,
-                "messages": [
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{base64_image}"
-                                },
-                            },
-                            {"type": "text", "text": user_text},
-                        ],
-                    },
+    data = await llm.chat({
+        "model": settings.ai_model,
+        "messages": [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}},
+                    {"type": "text", "text": user_text},
                 ],
-                # Новые Flash «думают» — без low reasoning съедают лимит и JSON обрезается
-                "reasoning": {"effort": "low"},
-                "max_tokens": 3000,
             },
-        )
-        response.raise_for_status()
-        data = response.json()
-
-    content = data["choices"][0]["message"]["content"]
-    # Парсим JSON из ответа (может быть обёрнут в ```json...```)
-    content = content.strip()
-    if content.startswith("```"):
-        content = content.split("\n", 1)[1].rsplit("```", 1)[0]
+        ],
+        # Flash «думает»: размышления идут в тот же max_tokens, и JSON обрезается
+        "reasoning_effort": "low",
+        "max_tokens": 4000,
+    }, timeout=90.0)
+    content = llm.text_of(data)
 
     parsed = json.loads(content)
     parsed["_sources"] = search_results

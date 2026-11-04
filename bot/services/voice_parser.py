@@ -1,20 +1,18 @@
-"""Голос → структурированные поля одним вызовом через OpenRouter Voxtral.
+"""Голос → структурированные поля одним вызовом (MixRoute, LLM_VOICE_MODEL).
 
-Заменяет Whisper + отдельный парсер: модель сама распознаёт речь и
-сразу извлекает JSON. Telegram присылает голосовые в OGG/Opus —
-voxtral принимает ogg напрямую (gpt-audio-mini требовал wav/mp3).
+Модель сама распознаёт речь и сразу извлекает JSON. Telegram присылает
+голосовые в OGG/Opus, а MixRoute для Gemini принимает только mp3/wav
+(ogg отвечает 500 «mime type is not supported») — перекодируем ffmpeg в mp3.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 
-import httpx
-
 from bot.config import settings
+from bot.services import llm
 
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-AUDIO_MODEL = "mistralai/voxtral-small-24b-2507"
 
 PROMPT = """Это голосовое описание произведения искусства из CRM галереи.
 Распознай речь на русском и извлеки структурированные поля. Верни ТОЛЬКО валидный JSON:
@@ -38,39 +36,37 @@ PROMPT = """Это голосовое описание произведения 
 Не выдумывай. Размеры могут говорить как '80 на 60', '80x60', 'восемьдесят на шестьдесят' — нормализуй в числа. Принято писать высота × ширина: первое число — height_cm, второе — width_cm."""
 
 
+async def _to_mp3(audio_bytes: bytes) -> bytes:
+    proc = await asyncio.create_subprocess_exec(
+        "ffmpeg", "-loglevel", "error", "-i", "pipe:0", "-ac", "1", "-b:a", "64k", "-f", "mp3", "pipe:1",
+        stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+    )
+    out, err = await proc.communicate(audio_bytes)
+    if proc.returncode != 0 or not out:
+        raise RuntimeError(f"ffmpeg: {err.decode(errors='ignore')[:200]}")
+    return out
+
+
 async def parse_voice(audio_bytes: bytes, audio_format: str = "ogg") -> dict:
-    """Один вызов в gpt-audio-mini: распознаёт + парсит → JSON."""
-    if not settings.openrouter_api_key:
+    """Один вызов: распознаёт + парсит → JSON."""
+    if not settings.ai_api_key:
         return {}
 
+    if audio_format not in ("mp3", "wav"):
+        audio_bytes, audio_format = await _to_mp3(audio_bytes), "mp3"
     audio_b64 = base64.b64encode(audio_bytes).decode()
-
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(
-            OPENROUTER_URL,
-            headers={
-                "Authorization": f"Bearer {settings.openrouter_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": AUDIO_MODEL,
-                "modalities": ["text"],
-                "messages": [{
-                    "role": "user",
-                    "content": [
-                        {"type": "input_audio", "input_audio": {"data": audio_b64, "format": audio_format}},
-                        {"type": "text", "text": PROMPT},
-                    ],
-                }],
-                "max_tokens": 800,
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-
-    raw = data["choices"][0]["message"]["content"].strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+    raw = await llm.chat({
+        "model": settings.voice_model,
+        "messages": [{
+            "role": "user",
+            "content": [
+                {"type": "input_audio", "input_audio": {"data": audio_b64, "format": audio_format}},
+                {"type": "text", "text": PROMPT},
+            ],
+        }],
+        "max_tokens": 2000,
+        "reasoning_effort": "none",
+    }, timeout=120.0)
     try:
         return json.loads(raw)
     except json.JSONDecodeError:

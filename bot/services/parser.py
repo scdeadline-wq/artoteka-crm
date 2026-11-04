@@ -1,4 +1,4 @@
-"""Парсер свободного текстового описания работы через Claude (OpenRouter).
+"""Парсер свободного текстового описания работы через LLM (MixRoute).
 
 Извлекает структурированные поля (artist, title, year, technique, размеры, цена)
 из произвольного русского текста или транскрипции голосового сообщения.
@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import json
 
-import httpx
-
 from bot.config import settings
+from bot.services import llm
 
 PARSE_PROMPT = """Ты — парсер описаний произведений искусства для CRM галереи.
 Получаешь свободный текст на русском (часто из голосового сообщения, могут быть ошибки распознавания).
@@ -35,31 +34,18 @@ PARSE_PROMPT = """Ты — парсер описаний произведени�
 
 async def parse_description(text: str) -> dict:
     """Парсит свободный текст в структурированный JSON. Все поля могут быть null."""
-    if not text or not settings.openrouter_api_key:
+    if not text or not settings.ai_api_key:
         return {}
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {settings.openrouter_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": settings.parse_model,
-                "messages": [
-                    {"role": "system", "content": PARSE_PROMPT},
-                    {"role": "user", "content": text},
-                ],
-                "max_tokens": 500,
-            },
-        )
-        response.raise_for_status()
-        data = response.json()
-
-    raw = data["choices"][0]["message"]["content"].strip()
-    if raw.startswith("```"):
-        raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+    raw = await llm.chat({
+        "model": settings.parse_model,
+        "messages": [
+            {"role": "system", "content": PARSE_PROMPT},
+            {"role": "user", "content": text},
+        ],
+        "max_tokens": 1500,
+        "reasoning_effort": "none",
+    }, timeout=30.0)
     try:
         return json.loads(raw)
     except json.JSONDecodeError:

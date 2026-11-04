@@ -1,3 +1,4 @@
+import json
 import asyncio
 from datetime import datetime, timedelta, timezone
 
@@ -20,6 +21,7 @@ from app.schemas.artwork import ArtworkCreate, ArtworkUpdate, ArtworkOut, Artwor
 from fastapi.responses import Response as FastAPIResponse
 from app.services.storage import upload_image, get_image_bytes, delete_object
 from app.services.ai import analyze_artwork_image
+from app.services.llm import LLMError
 from app.services.enhance import auto_enhance, smart_crop
 from app.services.mockup import generate_mockup, generate_custom_mockup
 from app.services.pdf import render_artwork_pdf
@@ -468,7 +470,12 @@ async def analyze_image(
 ):
     """AI-анализ фото: возвращает предзаполненные поля для карточки."""
     image_bytes = await file.read()
-    ai_result = await analyze_artwork_image(image_bytes, file.content_type)
+    try:
+        ai_result = await analyze_artwork_image(image_bytes, file.content_type)
+    except LLMError as e:
+        raise HTTPException(status_code=502, detail=f"AI-провайдер: {e}")
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=502, detail="AI вернул не JSON — попробуйте ещё раз")
 
     if "error" in ai_result:
         raise HTTPException(status_code=500, detail=ai_result["error"])

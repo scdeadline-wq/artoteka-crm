@@ -29,6 +29,7 @@ export default function ShareDialog({
   const [artistSearch, setArtistSearch] = useState("");
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [created, setCreated] = useState<{ link: ShareLink; copied: boolean } | null>(null);
 
   const { data: allTags = [] } = useQuery<string[]>({
     queryKey: ["share-tags"],
@@ -62,15 +63,38 @@ export default function ShareDialog({
           show_prices: showPrices,
         })
         .then((r) => r.data),
-    onSuccess: (link) => {
+    onSuccess: () => {
       setError("");
       setTitle("");
       invalidate();
-      copy(link);
     },
     onError: (e: { response?: { data?: { detail?: string } } }) =>
       setError(e.response?.data?.detail || "Не удалось создать ссылку"),
   });
+  // Safari пускает в буфер только синхронно из клика, а ссылка появляется после запроса.
+  // Поэтому ClipboardItem получает промис сразу в обработчике клика — так запись считается
+  // начатой пользователем. Где ClipboardItem нет — копируем обычным способом после ответа.
+  const createAndCopy = async () => {
+    setCreated(null);
+    const linkPromise = create.mutateAsync();
+    let copied = false;
+    try {
+      if (typeof ClipboardItem !== "undefined" && navigator.clipboard?.write && window.isSecureContext) {
+        const blob = linkPromise.then((l) => new Blob([shareUrl(l.token)], { type: "text/plain" }));
+        await navigator.clipboard.write([new ClipboardItem({ "text/plain": blob })]);
+        copied = true;
+      }
+    } catch {}
+    let link: ShareLink;
+    try {
+      link = await linkPromise;
+    } catch {
+      return;
+    }
+    if (!copied) copied = await copyText(shareUrl(link.token));
+    setCreated({ link, copied });
+  };
+
   const toggle = useMutation({
     mutationFn: (link: ShareLink) => api.patch(`/shares/${link.id}/`, { is_active: !link.is_active }),
     onSuccess: invalidate,
@@ -176,12 +200,36 @@ export default function ShareDialog({
         </p>
         {error && <p className="mb-2 text-sm text-red-600">{error}</p>}
         <button
-          onClick={() => create.mutate()}
+          onClick={createAndCopy}
           disabled={create.isPending}
           className="w-full rounded-lg bg-gray-900 py-2.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-40"
         >
           {create.isPending ? "Создаю…" : "Создать и скопировать ссылку"}
         </button>
+        {created && (
+          <div className="mt-3 rounded-lg border border-green-200 bg-green-50 p-2.5">
+            <p className="mb-1.5 text-xs text-green-800">
+              {created.copied ? "Ссылка создана и скопирована" : "Ссылка создана — нажмите «Скопировать»"}
+            </p>
+            <div className="flex gap-2">
+              <input
+                readOnly
+                value={shareUrl(created.link.token)}
+                onFocus={(e) => e.currentTarget.select()}
+                className="min-w-0 flex-1 rounded border bg-white px-2 py-1 text-xs"
+              />
+              <button
+                onClick={async () => {
+                  const ok = await copyText(shareUrl(created.link.token));
+                  setCreated({ ...created, copied: ok || created.copied });
+                }}
+                className="shrink-0 rounded bg-gray-900 px-2.5 py-1 text-xs text-white"
+              >
+                Скопировать
+              </button>
+            </div>
+          </div>
+        )}
 
         {links.length > 0 && (
           <div className="mt-6 border-t pt-4">

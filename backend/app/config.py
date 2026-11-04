@@ -1,3 +1,4 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -19,11 +20,14 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_expire_minutes: int = 1440
 
-    # AI (OpenRouter)
-    openrouter_api_key: str = ""
-    # Алиас на актуальную Flash: конкретные версии OpenRouter снимает (2.0-flash сняли → AI молча падал с 404)
-    ai_model: str = "~google/gemini-flash-latest"
-    mockup_model: str = "openai/gpt-5-image"
+    # AI — MixRoute (OpenAI-совместимый). OpenRouter забанен, его переменные не читаем.
+    # Модели названы LLM_*, а не AI_MODEL: старый AI_MODEL в .env содержит имя OpenRouter.
+    ai_api_key: str = Field("", validation_alias=AliasChoices("MIXROUTE_API_KEY", "AI_API_KEY"))
+    ai_base_url: str = "https://api.mixroute.ai/v1"
+    # Пусто — напрямую. Если с сервера MixRoute не открывается: http://user:pass@host:port или socks5://...
+    ai_proxy: str = ""
+    ai_model: str = Field("gemini-2.5-flash", validation_alias="LLM_MODEL")
+    mockup_model: str = Field("gemini-2.5-flash-image", validation_alias="LLM_MOCKUP_MODEL")
 
     # Web search (SearchAPI.io — Yandex reverse image)
     searchapi_key: str = ""

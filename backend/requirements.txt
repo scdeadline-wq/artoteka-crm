@@ -13,7 +13,7 @@ pillow
 boto3
 celery[redis]
 redis
-httpx
+httpx[socks]
 pillow-heif
 beautifulsoup4
 lxml

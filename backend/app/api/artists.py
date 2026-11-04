@@ -7,6 +7,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
+from app.services import llm
 from app.database import get_db
 from app.sorting import surname_expr
 from app.auth import get_current_user, require_admin
@@ -96,26 +97,15 @@ TRANSLATE_PROMPT = """Ты переводишь имена художников 
 
 
 async def _translate_batch(items: list[dict]) -> list[dict]:
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        r = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {settings.openrouter_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": settings.ai_model,
-                "messages": [
-                    {"role": "system", "content": TRANSLATE_PROMPT},
-                    {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
-                ],
-                "max_tokens": 4000,
-            },
-        )
-        r.raise_for_status()
-        content = r.json()["choices"][0]["message"]["content"].strip()
-    if content.startswith("```"):
-        content = content.split("\n", 1)[1].rsplit("```", 1)[0]
+    data = await llm.chat({
+        "model": settings.ai_model,
+        "messages": [
+            {"role": "system", "content": TRANSLATE_PROMPT},
+            {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
+        ],
+        "max_tokens": 4000,
+    }, timeout=120.0)
+    content = llm.text_of(data)
     return json.loads(content)
 
 
@@ -166,26 +156,15 @@ ENRICH_BIO_PROMPT = """Ты заполняешь биографии художн
 
 
 async def _fill_bio_batch(items: list[dict]) -> list[dict]:
-    async with httpx.AsyncClient(timeout=180.0) as client:
-        r = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {settings.openrouter_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": settings.ai_model,
-                "messages": [
-                    {"role": "system", "content": BIO_PROMPT},
-                    {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
-                ],
-                "max_tokens": 6000,
-            },
-        )
-        r.raise_for_status()
-        content = r.json()["choices"][0]["message"]["content"].strip()
-    if content.startswith("```"):
-        content = content.split("\n", 1)[1].rsplit("```", 1)[0]
+    data = await llm.chat({
+        "model": settings.ai_model,
+        "messages": [
+            {"role": "system", "content": BIO_PROMPT},
+            {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
+        ],
+        "max_tokens": 6000,
+    }, timeout=180.0)
+    content = llm.text_of(data)
     return json.loads(content)
 
 
@@ -195,8 +174,8 @@ async def fill_bios(
     _: User = Depends(require_admin),
 ) -> dict:
     """Заполняет bio через Claude у всех артистов с пустым bio. Только admin."""
-    if not settings.openrouter_api_key:
-        raise HTTPException(status_code=500, detail="OpenRouter not configured")
+    if not llm.configured():
+        raise HTTPException(status_code=500, detail="AI API key not configured")
 
     artists = (await db.execute(
         select(Artist).where(or_(Artist.bio.is_(None), Artist.bio == ""))
@@ -281,8 +260,8 @@ async def enrich_bios_with_search(
     _: User = Depends(require_admin),
 ) -> dict:
     """Для всех артистов с пустым bio: Google-поиск + Claude. Только admin."""
-    if not settings.openrouter_api_key:
-        raise HTTPException(status_code=500, detail="OpenRouter not configured")
+    if not llm.configured():
+        raise HTTPException(status_code=500, detail="AI API key not configured")
     if not settings.searchapi_key:
         raise HTTPException(status_code=500, detail="SearchAPI not configured")
 
@@ -322,26 +301,15 @@ async def enrich_bios_with_search(
     for i in range(0, len(items), BATCH):
         batch = items[i:i + BATCH]
         try:
-            async with httpx.AsyncClient(timeout=240.0) as client:
-                r = await client.post(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.openrouter_api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": settings.ai_model,
-                        "messages": [
-                            {"role": "system", "content": ENRICH_BIO_PROMPT},
-                            {"role": "user", "content": json.dumps(batch, ensure_ascii=False)},
-                        ],
-                        "max_tokens": 6000,
-                    },
-                )
-                r.raise_for_status()
-                content = r.json()["choices"][0]["message"]["content"].strip()
-            if content.startswith("```"):
-                content = content.split("\n", 1)[1].rsplit("```", 1)[0]
+            data = await llm.chat({
+                "model": settings.ai_model,
+                "messages": [
+                    {"role": "system", "content": ENRICH_BIO_PROMPT},
+                    {"role": "user", "content": json.dumps(batch, ensure_ascii=False)},
+                ],
+                "max_tokens": 6000,
+            }, timeout=240.0)
+            content = llm.text_of(data)
             results = json.loads(content)
         except Exception as e:
             log.exception("enrich batch failed: %s", e)
@@ -368,8 +336,8 @@ async def translate_names(
     _: User = Depends(require_admin),
 ) -> dict:
     """Заполняет name_en у всех артистов с пустым name_en (через Claude). Только admin."""
-    if not settings.openrouter_api_key:
-        raise HTTPException(status_code=500, detail="OpenRouter not configured")
+    if not llm.configured():
+        raise HTTPException(status_code=500, detail="AI API key not configured")
 
     artists = (await db.execute(
         select(Artist).where(or_(Artist.name_en.is_(None), Artist.name_en == ""))

@@ -1,15 +1,15 @@
-"""Генерация фотореалистичных мокапов через OpenRouter image generation.
+"""Генерация фотореалистичных мокапов (image-модель MixRoute, LLM_MOCKUP_MODEL).
 
-Используем GPT-5-image или Gemini через OpenRouter с параметром modalities: ["image", "text"].
+Модель вызывается с modalities: ["image", "text"].
 Отправляем фото картины + промпт с описанием интерьера.
 """
 import base64
 from io import BytesIO
 
-import httpx
 from PIL import Image
 
 from app.config import settings
+from app.services import llm
 from app.services.image_utils import normalize_image
 
 ROOM_PROMPTS = {
@@ -46,83 +46,28 @@ async def generate_mockup(
         fmt = "jpeg"
     mime = f"image/{fmt}"
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {settings.openrouter_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": settings.mockup_model,
-                "modalities": ["image", "text"],
-                "messages": [
+    data = await llm.chat({
+        "model": settings.mockup_model,
+        "modalities": ["image", "text"],
+        "messages": [
+            {
+                "role": "user",
+                "content": [
                     {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:{mime};base64,{artwork_b64}",
-                                },
-                            },
-                            {
-                                "type": "text",
-                                "text": prompt,
-                            },
-                        ],
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{mime};base64,{artwork_b64}",
+                        },
+                    },
+                    {
+                        "type": "text",
+                        "text": prompt,
                     },
                 ],
             },
-        )
-        response.raise_for_status()
-        data = response.json()
-
-    # Извлекаем изображение из ответа
-    choice = data["choices"][0]["message"]
-
-    # Формат OpenRouter: images в отдельном массиве
-    images = choice.get("images") or []
-    for img_part in images:
-        if img_part.get("type") == "image_url":
-            url = img_part["image_url"]["url"]
-            if url.startswith("data:"):
-                b64_data = url.split(",", 1)[1]
-                return base64.b64decode(b64_data)
-            else:
-                async with httpx.AsyncClient() as dl:
-                    resp = await dl.get(url)
-                    return resp.content
-
-    # Fallback: ищем в content (некоторые модели кладут туда)
-    content = choice.get("content")
-    if isinstance(content, list):
-        for part in content:
-            if part.get("type") == "image_url":
-                url = part["image_url"]["url"]
-                if url.startswith("data:"):
-                    b64_data = url.split(",", 1)[1]
-                    return base64.b64decode(b64_data)
-
-    raise Exception(f"No image in AI response. Keys: {list(choice.keys())}, images: {len(images)}")
-
-
-def _extract_image(data: dict) -> bytes:
-    """Извлекает изображение из ответа OpenRouter."""
-    choice = data["choices"][0]["message"]
-    for img_part in choice.get("images") or []:
-        if img_part.get("type") == "image_url":
-            url = img_part["image_url"]["url"]
-            if url.startswith("data:"):
-                return base64.b64decode(url.split(",", 1)[1])
-    content = choice.get("content")
-    if isinstance(content, list):
-        for part in content:
-            if part.get("type") == "image_url":
-                url = part["image_url"]["url"]
-                if url.startswith("data:"):
-                    return base64.b64decode(url.split(",", 1)[1])
-    raise Exception("No image in AI response")
+        ],
+    }, timeout=180.0)
+    return llm.image_of(data)
 
 
 async def generate_custom_mockup(
@@ -160,33 +105,24 @@ async def generate_custom_mockup(
         f"Photorealistic result, no distortion of the original room."
     )
 
-    async with httpx.AsyncClient(timeout=120.0) as client:
-        response = await client.post(
-            "https://openrouter.ai/api/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {settings.openrouter_api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": settings.mockup_model,
-                "modalities": ["image", "text"],
-                "messages": [
+    data = await llm.chat({
+        "model": settings.mockup_model,
+        "modalities": ["image", "text"],
+        "messages": [
+            {
+                "role": "user",
+                "content": [
                     {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:{room_mime};base64,{room_b64}"},
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {"url": f"data:{art_mime};base64,{artwork_b64}"},
-                            },
-                            {"type": "text", "text": prompt},
-                        ],
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{room_mime};base64,{room_b64}"},
                     },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{art_mime};base64,{artwork_b64}"},
+                    },
+                    {"type": "text", "text": prompt},
                 ],
             },
-        )
-        response.raise_for_status()
-        return _extract_image(response.json())
+        ],
+    }, timeout=180.0)
+    return llm.image_of(data)

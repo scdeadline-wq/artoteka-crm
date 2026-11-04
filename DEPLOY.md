@@ -161,39 +161,23 @@ docker compose -f docker-compose.vps.yml logs -f postgres   # логи БД
 3. Обновить `PUBLIC_API_URL` в `.env` на `https://api.artoteka.ru`
 4. Пересобрать frontend
 
-## OpenRouter API — справка
+## AI (MixRoute) — справка
 
-### Image Generation (мокапы)
-Используем стандартный chat completions endpoint с обязательным параметром `modalities`:
+OpenRouter не используется: аккаунт забанен. Все вызовы идут через `backend/app/services/llm.py`
+и `bot/services/llm.py` на `https://api.mixroute.ai/v1/chat/completions` (OpenAI-совместимый).
 
+В `deploy/.env`: `MIXROUTE_API_KEY` (общий для backend и бота), при необходимости `AI_PROXY`
+и модели `LLM_MODEL` / `LLM_MOCKUP_MODEL` / `LLM_PARSE_MODEL` / `LLM_VOICE_MODEL`
+(дефолты: `gemini-2.5-flash`, мокапы — `gemini-2.5-flash-image`). Старые `OPENROUTER_API_KEY`
+и `AI_MODEL` больше не читаются.
+
+Имена моделей — как в каталоге MixRoute, без префиксов `google/`, `openai/`:
 ```bash
-curl https://openrouter.ai/api/v1/chat/completions \
-  -H "Authorization: Bearer $OPENROUTER_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "openai/gpt-5-image",
-    "modalities": ["image", "text"],   # <-- ОБЯЗАТЕЛЬНО для генерации изображений
-    "messages": [{"role": "user", "content": "Generate..."}]
-  }'
+curl -s https://api.mixroute.ai/v1/models -H "Authorization: Bearer $MIXROUTE_API_KEY" | python3 -m json.tool | grep '"id"'
 ```
-
-Ответ: `choices[0].message.images[0].image_url.url` — base64 data URI.
-
-### Модели генерации изображений (по стоимости)
-| Модель | Цена | Качество |
-|--------|------|----------|
-| `google/gemini-2.5-flash-image` | ~бесплатно | хорошее |
-| `openai/gpt-5-image-mini` | ~$0.003 | хорошее |
-| `openai/gpt-5-image` | ~$0.01 | топ |
-| `black-forest-labs/flux.2-pro` | ~$0.03 | топ |
-
-### Vision/анализ (карточки произведений)
-Модель: `~google/gemini-flash-latest` (алиас на актуальную Flash; `gemini-2.0-flash-001` сняли с OpenRouter, AI молча падал с 404). На проде проверить, что `AI_MODEL` в `.env` не переопределяет на старую.
-
-### Доступные модели с image output
-```bash
-curl "https://openrouter.ai/api/v1/models?output_modalities=image"
-```
+Наличие модели в списке ничего не гарантирует (в homeos Claude и gpt-5 висели в списке, но отдавали
+ошибки) — проверять реальным запросом. Ошибка провайдера пишется в лог backend как `LLM <model> <код>`
+и показывается на экране «Новое произведение».
 
 ## Рекомендации по апгрейду
 

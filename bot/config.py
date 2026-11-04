@@ -1,3 +1,4 @@
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings
 
 
@@ -14,9 +15,14 @@ class BotSettings(BaseSettings):
     crm_user_email: str = ""
     crm_user_password: str = ""
 
-    # OpenRouter (тот же что у backend): Claude для текста, gpt-audio для голоса
-    openrouter_api_key: str = ""
-    parse_model: str = "anthropic/claude-sonnet-4.6"
+    # MixRoute (тот же ключ, что у backend). OpenRouter забанен.
+    # Имена моделей — из каталога MixRoute; Claude там сейчас не отвечает, поэтому Gemini.
+    ai_api_key: str = Field("", validation_alias=AliasChoices("MIXROUTE_API_KEY", "AI_API_KEY"))
+    ai_base_url: str = "https://api.mixroute.ai/v1"
+    ai_proxy: str = ""
+    parse_model: str = Field("gemini-2.5-flash", validation_alias="LLM_PARSE_MODEL")
+    # Голос: модель должна принимать input_audio (Gemini понимает ogg/opus из Telegram)
+    voice_model: str = Field("gemini-2.5-flash", validation_alias="LLM_VOICE_MODEL")
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

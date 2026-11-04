@@ -317,7 +317,9 @@ export default function NewArtworkPage() {
                 />
               )}
               <p className="text-sm text-red-600">
-                Не удалось проанализировать. Проверьте API-ключ OpenRouter.
+                Не удалось проанализировать.{" "}
+                {(analyze.error as unknown as { response?: { data?: { detail?: string } } })?.response?.data
+                  ?.detail ?? ""}
               </p>
               <button
                 onClick={() => setStep("review")}
