@@ -44,3 +44,7 @@ deploy/.last_alembic_rev
 deploy/backups/
 deploy/certbot/
 deploy/.env.bak-*
+
+# Конфиги и статика соседних сайтов — живут только на сервере
+deploy/nginx/sites/
+deploy/nginx/www/

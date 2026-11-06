@@ -22,6 +22,9 @@ services:
       - ./nginx/https.conf.template:/etc/nginx/templates/default.conf.template:ro
       - ./certbot/conf:/etc/letsencrypt:ro
       - ./certbot/www:/var/www/certbot:ro
+      # Соседние сайты на этом сервере (не Артотека) — см. конец https.conf.template
+      - ./nginx/sites:/etc/nginx/conf.d/sites:ro
+      - ./nginx/www:/var/www/sites:ro
     # Раз в 6 часов перечитываем конфиг, чтобы подхватить продлённый сертификат
     entrypoint:
       - /bin/sh

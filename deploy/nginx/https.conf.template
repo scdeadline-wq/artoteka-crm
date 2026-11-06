@@ -96,3 +96,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
+
+# Другие сайты на этом же сервере (HomeOS и т.п.) — конфиги и статика лежат
+# только на сервере, в deploy/nginx/sites/ и deploy/nginx/www/ (в git их нет).
+include /etc/nginx/conf.d/sites/*.conf;
