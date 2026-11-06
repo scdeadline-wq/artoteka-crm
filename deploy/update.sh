@@ -149,6 +149,12 @@ for svc in $SERVICES; do
 done
 $COMPOSE up -d
 
+# nginx резолвит backend/frontend один раз при старте. Пересозданный контейнер
+# может получить новый IP — без reload nginx стучится в старый и отдаёт 502.
+if $COMPOSE ps --services --status running 2>/dev/null | grep -qx nginx; then
+  $COMPOSE exec -T nginx nginx -s reload || true
+fi
+
 echo "==> ps"
 $COMPOSE ps --format 'table {{.Service}}\t{{.Status}}'
 
