@@ -692,6 +692,12 @@ export default function ArtworkDetailPage({
               ))}
             </div>
           )}
+          {hasImages && artwork.images.every((img) => img.is_internal) && (
+            <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              Все фото помечены как внутренние — в клиентский PDF и подборки не попадёт ни одного.
+              Нажмите «→ в PDF» на нужном фото.
+            </p>
+          )}
           <div className="mt-2 flex flex-wrap gap-2">
             <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
               {uploadImageMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}

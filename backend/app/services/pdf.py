@@ -160,11 +160,14 @@ def _html(
     cur = artwork.currency
 
     img = _image_data_url(artwork)
-    img_block = (
-        f'<img class="image" src="{img}" alt=""/>'
-        if img
-        else '<div class="image-stub">— нет фото —</div>'
-    )
+    if img:
+        img_block = f'<img class="image" src="{img}" alt=""/>'
+    elif artwork.images and all(getattr(i, "is_internal", False) for i in artwork.images):
+        # Частая ловушка: фото загружено как «внутреннее» — в клиентский PDF оно не идёт
+        img_block = ('<div class="image-stub">Нет фото для клиента — все фото работы '
+                     'помечены как внутренние</div>')
+    else:
+        img_block = '<div class="image-stub">— нет фото —</div>'
 
     logo = _logo_data_url(logo_url)
     logo_block = f'<img class="logo" src="{logo}" alt=""/>' if logo else escape(gallery_name)
