@@ -36,13 +36,47 @@ def _fetch_data_url(url: str) -> str | None:
     return f"data:{ct};base64,{base64.b64encode(data).decode()}"
 
 
+PDF_IMAGE_MAX_PX = 1600
+
+
+def _fetch_photo_data_url(url: str) -> str | None:
+    """Фото работы → JPEG data-url. WeasyPrint не понимает HEIC (фото с iPhone)
+    и молча выкидывает картинку с чужим mime (application/octet-stream и т.п.),
+    поэтому всегда перегоняем через PIL: JPEG, поворот по EXIF, не больше 1600px."""
+    key = (url or "").lstrip("/").replace("images/", "", 1)
+    if not key:
+        return None
+    try:
+        data, _ = get_image_bytes(key)
+    except Exception as e:
+        log.warning("PDF: не удалось загрузить картинку %r: %s", url, e)
+        return None
+    try:
+        from PIL import Image as PILImage
+        from app.services.image_utils import normalize_image
+
+        img = PILImage.open(BytesIO(normalize_image(data)))
+        if max(img.size) > PDF_IMAGE_MAX_PX:
+            img.thumbnail((PDF_IMAGE_MAX_PX, PDF_IMAGE_MAX_PX), PILImage.LANCZOS)
+        buf = BytesIO()
+        img.save(buf, format="JPEG", quality=88)
+        data = buf.getvalue()
+    except Exception as e:
+        log.warning("PDF: не удалось сконвертировать картинку %r: %s", url, e)
+        return None
+    return f"data:image/jpeg;base64,{base64.b64encode(data).decode()}"
+
+
 def _image_data_url(artwork: Artwork) -> str | None:
     # В клиентский PDF — только не-внутренние фото
     images = [i for i in (artwork.images or []) if not getattr(i, "is_internal", False)]
     images.sort(key=lambda i: (not i.is_primary, i.sort_order))
-    if not images:
-        return None
-    return _fetch_data_url(images[0].url or "")
+    # Если главное фото битое/нечитаемое — пробуем следующие
+    for image in images:
+        img = _fetch_photo_data_url(image.url or "")
+        if img:
+            return img
+    return None
 
 
 def _logo_data_url(logo_url: str | None) -> str | None:
