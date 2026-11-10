@@ -270,7 +270,7 @@ async def create_artwork(
     # Инв. номер = max+1 → возможна гонка на unique-индексе. Ретраим до 3 раз.
     for attempt in range(3):
         inv_num = await _next_inventory_number(db)
-        artwork = Artwork(**data, inventory_number=inv_num)
+        artwork = Artwork(**data, inventory_number=inv_num, created_by_id=user.id)
         artwork.techniques = list(techniques)
         db.add(artwork)
         try:

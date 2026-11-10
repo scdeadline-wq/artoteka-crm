@@ -131,6 +131,7 @@ export default function ArtworkDetailPage({
       description: artwork.description || "",
       condition: artwork.condition || "",
       provenance: artwork.provenance || "",
+      notes: artwork.notes || "",
       style_period: artwork.style_period || "",
       warehouse_id: artwork.warehouse?.id ?? 0,
       rack_id: artwork.rack?.id ?? 0,
@@ -189,6 +190,7 @@ export default function ArtworkDetailPage({
         description: form.description || null,
         condition: form.condition || null,
         provenance: form.provenance || null,
+        notes: String(form.notes ?? "").trim() || null,
         style_period: form.style_period || null,
         warehouse_id: form.warehouse_id ? Number(form.warehouse_id) : null,
         rack_id: form.rack_id ? Number(form.rack_id) : null,
@@ -834,6 +836,10 @@ export default function ArtworkDetailPage({
               <textarea value={form.provenance as string} onChange={(e) => setForm({ ...form, provenance: e.target.value })} rows={3} className="w-full rounded border px-2 py-1.5 text-sm" placeholder="Из собрания…; участвовала в выставке…; упоминается в каталоге…" />
             </div>
             <div className="col-span-full">
+              <label className="mb-1 block text-xs text-gray-500">Внутренний комментарий (видят только сотрудники, не попадает в PDF)</label>
+              <textarea value={form.notes as string} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={3} className="w-full rounded border border-amber-200 bg-amber-50/40 px-2 py-1.5 text-sm" placeholder="Пометки для коллег…" />
+            </div>
+            <div className="col-span-full">
               <label className="mb-2 block text-xs text-gray-500">Техника</label>
               <div className="flex flex-wrap gap-1.5">
                 {techniques.map((t) => (
@@ -888,6 +894,15 @@ export default function ArtworkDetailPage({
             <div>
               <p className="text-gray-500">Инвентарный номер</p>
               <p className="font-medium">#{artwork.inventory_number}</p>
+            </div>
+            <div>
+              <p className="text-gray-500">Внёс в каталог</p>
+              <p className="font-medium">
+                {artwork.created_by?.name ?? "—"}
+                <span className="ml-1 font-normal text-gray-500">
+                  {new Date(artwork.created_at).toLocaleDateString("ru-RU")}
+                </span>
+              </p>
             </div>
             {artwork.techniques.length > 0 && (
               <div className="col-span-2">
@@ -984,6 +999,12 @@ export default function ArtworkDetailPage({
           <div className="mt-4 border-t pt-4">
             <p className="mb-1 text-sm text-gray-500">Провенанс</p>
             <p className="whitespace-pre-line text-sm leading-relaxed text-gray-700">{artwork.provenance}</p>
+          </div>
+        )}
+        {!editing && artwork.notes && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <p className="mb-1 text-sm text-amber-700">Внутренний комментарий · не попадает в PDF</p>
+            <p className="whitespace-pre-line text-sm leading-relaxed text-gray-800">{artwork.notes}</p>
           </div>
         )}
       </div>

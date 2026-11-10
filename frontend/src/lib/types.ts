@@ -61,6 +61,7 @@ export interface Artwork {
   is_framed: boolean;
   tags: string[];
   deleted_at: string | null;
+  created_by: { id: number; name: string } | null;  // кто внёс работу (null — старые работы)
   // Резерв: для кого держим, до какой даты (date-строка), заметка
   reserved_client_id: number | null;
   reserved_until: string | null;

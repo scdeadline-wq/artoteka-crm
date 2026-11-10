@@ -10,6 +10,13 @@ from app.schemas.room import RoomOut
 from app.schemas.storage import StorageOptionOut
 
 
+class UserBrief(BaseModel):
+    id: int
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
 class ImageOut(BaseModel):
     id: int
     url: str
@@ -142,6 +149,7 @@ class ArtworkOut(BaseModel):
     exhibition_to: date | None = None
     exhibition_place: str | None = None
     deleted_at: datetime | None = None
+    created_by: UserBrief | None = None
     techniques: list[TechniqueOut]
     images: list[ImageOut]
     created_at: datetime

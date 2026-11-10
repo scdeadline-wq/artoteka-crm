@@ -56,7 +56,7 @@ class Artwork(Base):
     purchase_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
     sale_price: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), default=None)
     currency: Mapped[str] = mapped_column(String(3), default="USD", server_default="USD")  # валюта цен работы
-    notes: Mapped[str | None] = mapped_column(Text, default=None)
+    notes: Mapped[str | None] = mapped_column(Text, default=None)  # внутренний комментарий сотрудников — НЕ в PDF и не в публичные подборки
     room_id: Mapped[int | None] = mapped_column(ForeignKey("rooms.id", ondelete="SET NULL"), default=None, index=True)
     is_framed: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     reserved_client_id: Mapped[int | None] = mapped_column(ForeignKey("clients.id", ondelete="SET NULL"), default=None)
@@ -68,6 +68,7 @@ class Artwork(Base):
     exhibition_place: Mapped[str | None] = mapped_column(String(500), default=None)
     tags: Mapped[list[str]] = mapped_column(ARRAY(Text), default=list, server_default="{}")
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), default=None, index=True)
+    created_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), default=None)  # кто внёс работу
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
@@ -79,6 +80,8 @@ class Artwork(Base):
     warehouse: Mapped["StorageOption | None"] = relationship(foreign_keys=[warehouse_id])
     rack: Mapped["StorageOption | None"] = relationship(foreign_keys=[rack_id])
     shelf: Mapped["StorageOption | None"] = relationship(foreign_keys=[shelf_id])
+    # selectin: подгружается всегда, чтобы ArtworkOut не падал в async (MissingGreenlet)
+    created_by: Mapped["User | None"] = relationship(foreign_keys=[created_by_id], lazy="selectin")
 
 
 class Image(Base):

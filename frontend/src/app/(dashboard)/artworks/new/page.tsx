@@ -90,6 +90,7 @@ export default function NewArtworkPage() {
     room_id: 0,
     is_framed: false,
     tags: "",
+    notes: "",
     status: "draft",
     technique_ids: [] as number[],
   });
@@ -203,6 +204,7 @@ export default function NewArtworkPage() {
           .map((t) => t.trim().replace(/^#/, ""))
           .filter(Boolean),
         status: form.status,
+        notes: form.notes.trim() || null,
         technique_ids: form.technique_ids,
       };
       if (isAdmin) {
@@ -726,6 +728,20 @@ export default function NewArtworkPage() {
               }
               rows={4}
               className="w-full rounded-lg border px-3 py-2 text-sm"
+            />
+          </div>
+
+          {/* Внутренний комментарий — только для сотрудников, в PDF и публичные подборки не идёт */}
+          <div className="mb-4">
+            <label className="mb-1 block text-xs text-gray-500">
+              Внутренний комментарий <span className="text-gray-400">(видят только сотрудники, не попадает в PDF)</span>
+            </label>
+            <textarea
+              value={form.notes}
+              onChange={(e) => setForm({ ...form, notes: e.target.value })}
+              rows={3}
+              className="w-full rounded-lg border border-amber-200 bg-amber-50/40 px-3 py-2 text-sm"
+              placeholder="Пометки для коллег…"
             />
           </div>
 
